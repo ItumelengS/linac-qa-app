@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Report {{ report.id }} - Linac QA System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        {% if report.qa_type == 'daily' %}🌅{% elif report.qa_type == 'monthly' %}📅{% elif report.qa_type == 'quarterly' %}📆{% else %}🗓️{% endif %}
+        {{ report.qa_type|capitalize }} QA Report
+    </h1>
+    <div>
+        <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+        <a href="/history" class="btn">Back to History</a>
+    </div>
+</div>
+
+<div class="report-view">
+    <!-- Report Header -->
+    <div class="form-card">
+        <div class="report-header-grid">
+            <div>
+                <strong>Date:</strong> {{ report.date }}
+            </div>
+            <div>
+                <strong>Unit:</strong> {{ report.unit.name }}
+                <br><small>{{ report.unit.manufacturer }} {{ report.unit.model }} | S/N: {{ report.unit.serial_number or 'N/A' }}</small>
+            </div>
+            <div>
+                <strong>Performed By:</strong> {{ report.performer }}
+            </div>
+            <div>
+                <strong>Witnessed By:</strong> {{ report.witness or 'N/A' }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Results -->
+    <div class="form-card">
+        <h2>Test Results</h2>
+        
+        <div class="results-summary">
+            <span class="badge badge-success">{{ report.pass_count }} Passed</span>
+            {% if report.fail_count > 0 %}
+            <span class="badge badge-error">{{ report.fail_count }} Failed</span>
+            {% endif %}
+            <span class="badge badge-gray">{{ report.total_tests }} Total</span>
+        </div>
+        
+        <table class="qa-table">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">Test #</th>
+                    <th>Description</th>
+                    <th style="width: 130px;">Tolerance / Action</th>
+                    <th style="width: 100px;">Status</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for test in report.tests %}
+                <tr class="qa-row {{ test.status }}">
+                    <td class="test-id">{{ test.test_id }}</td>
+                    <td>
+                        {% if test.test_id in tests_dict %}
+                        {{ tests_dict[test.test_id].description }}
+                        {% else %}
+                        {{ test.test_id }}
+                        {% endif %}
+                    </td>
+                    <td class="tolerance-cell">
+                        {% if test.test_id in tests_dict %}
+                        <strong>Tol:</strong> {{ tests_dict[test.test_id].tolerance }}<br>
+                        <strong>Act:</strong> {{ tests_dict[test.test_id].action }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if test.status == 'pass' %}
+                        <span class="badge badge-success">✓ Pass</span>
+                        {% elif test.status == 'fail' %}
+                        <span class="badge badge-error">✗ Fail</span>
+                        {% elif test.status == 'na' %}
+                        <span class="badge badge-gray">N/A</span>
+                        {% else %}
+                        <span class="badge badge-gray">-</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ test.notes or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Comments and Signature -->
+    <div class="form-card">
+        <div class="form-group">
+            <strong>Comments:</strong>
+            <p>{{ report.comments or 'No comments' }}</p>
+        </div>
+        
+        <div class="signature-block">
+            <div>
+                <strong>Signature:</strong> {{ report.signature or 'Not signed' }}
+            </div>
+            <div>
+                <strong>Submitted:</strong> {{ report.created_at.strftime('%Y-%m-%d %H:%M') }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

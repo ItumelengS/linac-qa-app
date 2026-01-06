@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}{{ qa_type|capitalize }} QA - Linac QA System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        {% if qa_type == 'daily' %}🌅{% elif qa_type == 'monthly' %}📅{% elif qa_type == 'quarterly' %}📆{% else %}🗓️{% endif %}
+        {{ qa_type|capitalize }} QA
+    </h1>
+    <p>SASQART Table 24 - {{ qa_type|capitalize }} Tests</p>
+</div>
+
+<form method="POST" action="/qa/{{ qa_type }}" class="qa-form">
+    <!-- Header Section -->
+    <div class="form-card">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="qa_date">QA Date *</label>
+                <input type="date" id="qa_date" name="qa_date" value="{{ today }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="unit_id">Linac Unit *</label>
+                <select id="unit_id" name="unit_id" required onchange="loadUnitDetails(this.value)">
+                    <option value="">Select Unit...</option>
+                    {% for unit in units %}
+                    <option value="{{ unit.id }}" {% if selected_unit and selected_unit.id == unit.id %}selected{% endif %}>
+                        {{ unit.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div id="unit_details" class="unit-details" style="display: none;">
+                    <span id="unit_manufacturer"></span> | 
+                    <strong>S/N: <span id="unit_serial"></span></strong>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="performer">Performed By *</label>
+                <input type="text" id="performer" name="performer" placeholder="Your name" value="{{ user.full_name }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="witness">Witnessed By</label>
+                <input type="text" id="witness" name="witness" placeholder="Witness name (if applicable)">
+            </div>
+        </div>
+    </div>
+
+    <!-- Tests Table -->
+    <div class="form-card">
+        <h2>Test Checklist</h2>
+        
+        <table class="qa-table">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">Test #</th>
+                    <th>Description</th>
+                    <th style="width: 130px;">Tolerance / Action</th>
+                    <th style="width: 120px;">Status</th>
+                    <th style="width: 200px;">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for test in tests %}
+                <tr class="qa-row" id="row_{{ test.id }}">
+                    <td class="test-id">{{ test.id }}</td>
+                    <td>
+                        {{ test.description }}
+                        {% if test.id in ['DL8', 'DL9'] %}
+                        <div id="energy_fields_{{ test.id }}" class="energy-fields">
+                            <!-- Populated by JavaScript based on selected unit -->
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td class="tolerance-cell">
+                        <strong>Tol:</strong> {{ test.tolerance }}<br>
+                        <strong>Act:</strong> {{ test.action }}
+                    </td>
+                    <td>
+                        <select name="status_{{ test.id }}" class="status-select" onchange="updateRowColor(this)">
+                            <option value="">-</option>
+                            <option value="pass">✓ Pass</option>
+                            <option value="fail">✗ Fail</option>
+                            <option value="na">N/A</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="text" name="notes_{{ test.id }}" class="notes-input" placeholder="Measurements/notes">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Comments and Signature -->
+    <div class="form-card">
+        <div class="form-group">
+            <label for="comments">Additional Comments</label>
+            <textarea id="comments" name="comments" rows="3" placeholder="Any additional observations..."></textarea>
+        </div>
+        
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="signature">Signature (Type Name) *</label>
+                <input type="text" id="signature" name="signature" placeholder="Type your name as signature" required>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary btn-lg">💾 Save {{ qa_type|capitalize }} Report</button>
+        <button type="button" class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+        <a href="/" class="btn">Cancel</a>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function loadUnitDetails(unitId) {
+    if (!unitId) {
+        document.getElementById('unit_details').style.display = 'none';
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/unit/${unitId}`);
+        const unit = await response.json();
+        
+        document.getElementById('unit_manufacturer').textContent = 
+            `${unit.manufacturer || ''} ${unit.model || ''}`.trim();
+        document.getElementById('unit_serial').textContent = 
+            unit.serial_number || 'Not configured';
+        document.getElementById('unit_details').style.display = 'block';
+        
+        // Generate energy fields for DL8/DL9 if present
+        generateEnergyFields(unit, 'DL8', [...(unit.photon_energies || []), ...(unit.fff_energies || [])]);
+        generateEnergyFields(unit, 'DL9', unit.electron_energies || []);
+    } catch (error) {
+        console.error('Error loading unit:', error);
+    }
+}
+
+function generateEnergyFields(unit, testId, energies) {
+    const container = document.getElementById(`energy_fields_${testId}`);
+    if (!container) return;
+    
+    if (energies.length === 0) {
+        container.innerHTML = '<p class="no-energies">No energies configured for this unit</p>';
+        return;
+    }
+    
+    let html = '<div class="energy-grid">';
+    energies.forEach(energy => {
+        const safeId = energy.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+        html += `
+            <div class="energy-row">
+                <label>${energy}</label>
+                <input type="number" step="0.001" placeholder="Reading" 
+                       onchange="calcDeviation('${testId}_${safeId}')">
+                <input type="number" step="0.001" placeholder="Reference"
+                       onchange="calcDeviation('${testId}_${safeId}')">
+                <span class="deviation" id="dev_${testId}_${safeId}">--%</span>
+            </div>
+        `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function updateRowColor(select) {
+    const row = select.closest('tr');
+    row.classList.remove('pass', 'fail');
+    if (select.value === 'pass') {
+        row.classList.add('pass');
+    } else if (select.value === 'fail') {
+        row.classList.add('fail');
+    }
+}
+
+// Load unit details if pre-selected
+{% if selected_unit %}
+loadUnitDetails({{ selected_unit.id }});
+{% endif %}
+</script>
+{% endblock %}

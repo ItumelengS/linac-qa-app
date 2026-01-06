@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}History - Linac QA System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📁 QA History</h1>
+</div>
+
+<!-- Filters -->
+<div class="form-card">
+    <form method="GET" action="/history" class="filter-form">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="start_date">Start Date</label>
+                <input type="date" id="start_date" name="start_date" value="{{ start_date }}">
+            </div>
+            <div class="form-group">
+                <label for="end_date">End Date</label>
+                <input type="date" id="end_date" name="end_date" value="{{ end_date }}">
+            </div>
+            <div class="form-group">
+                <label for="qa_type">QA Type</label>
+                <select id="qa_type" name="qa_type">
+                    <option value="all" {% if selected_qa_type == 'all' %}selected{% endif %}>All Types</option>
+                    <option value="daily" {% if selected_qa_type == 'daily' %}selected{% endif %}>Daily</option>
+                    <option value="monthly" {% if selected_qa_type == 'monthly' %}selected{% endif %}>Monthly</option>
+                    <option value="quarterly" {% if selected_qa_type == 'quarterly' %}selected{% endif %}>Quarterly</option>
+                    <option value="annual" {% if selected_qa_type == 'annual' %}selected{% endif %}>Annual</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="unit_id">Unit</label>
+                <select id="unit_id" name="unit_id">
+                    <option value="">All Units</option>
+                    {% for unit in units %}
+                    <option value="{{ unit.id }}" {% if selected_unit_id == unit.id %}selected{% endif %}>
+                        {{ unit.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">🔍 Search</button>
+    </form>
+</div>
+
+<!-- Results -->
+<div class="section">
+    {% if reports %}
+    <p class="results-count">Found {{ reports|length }} reports</p>
+    
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Unit</th>
+                <th>Performer</th>
+                <th>Pass</th>
+                <th>Fail</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for report in reports %}
+            <tr>
+                <td>{{ report.date }}</td>
+                <td><span class="badge badge-{{ report.qa_type }}">{{ report.qa_type|upper }}</span></td>
+                <td>{{ report.unit.name }}</td>
+                <td>{{ report.performer }}</td>
+                <td><span class="badge badge-success">{{ report.pass_count }}</span></td>
+                <td>
+                    {% if report.fail_count > 0 %}
+                    <span class="badge badge-error">{{ report.fail_count }}</span>
+                    {% else %}
+                    <span class="badge badge-gray">0</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/report/{{ report.id }}" class="btn btn-sm">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No reports found for the selected criteria.</p>
+    {% endif %}
+</div>
+{% endblock %}

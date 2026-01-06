@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Users - Linac QA System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>👥 User Management</h1>
+    <button class="btn btn-primary" onclick="showUserForm()">+ Add User</button>
+</div>
+
+<!-- User Form Modal -->
+<div id="user_modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modal_title">Add User</h2>
+            <button class="modal-close" onclick="hideUserForm()">&times;</button>
+        </div>
+        <form method="POST" action="/admin/users">
+            <input type="hidden" id="user_id" name="user_id" value="new">
+            
+            <div class="form-group">
+                <label for="username">Username *</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="full_name">Full Name</label>
+                <input type="text" id="full_name" name="full_name">
+            </div>
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email">
+            </div>
+            <div class="form-group">
+                <label for="role">Role</label>
+                <select id="role" name="role">
+                    <option value="therapist">Therapist</option>
+                    <option value="physicist">Physicist</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="password">Password <span id="password_hint">(required)</span></label>
+                <input type="password" id="password" name="password">
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="active" name="active" checked>
+                    Active
+                </label>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn" onclick="hideUserForm()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save User</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Users Table -->
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Full Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Last Login</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.full_name or '-' }}</td>
+            <td>{{ u.email or '-' }}</td>
+            <td><span class="badge badge-{{ u.role }}">{{ u.role|upper }}</span></td>
+            <td>
+                {% if u.active %}
+                <span class="badge badge-success">Active</span>
+                {% else %}
+                <span class="badge badge-gray">Disabled</span>
+                {% endif %}
+            </td>
+            <td>{{ u.last_login.strftime('%Y-%m-%d %H:%M') if u.last_login else 'Never' }}</td>
+            <td>
+                <button class="btn btn-sm" onclick="editUser({{ u.id }}, '{{ u.username }}', '{{ u.full_name }}', '{{ u.email }}', '{{ u.role }}', {{ 'true' if u.active else 'false' }})">
+                    Edit
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function showUserForm() {
+    document.getElementById('modal_title').textContent = 'Add User';
+    document.getElementById('user_id').value = 'new';
+    document.getElementById('password_hint').textContent = '(required)';
+    document.getElementById('password').required = true;
+    document.getElementById('user_modal').style.display = 'flex';
+}
+
+function hideUserForm() {
+    document.getElementById('user_modal').style.display = 'none';
+    // Clear form
+    document.getElementById('username').value = '';
+    document.getElementById('full_name').value = '';
+    document.getElementById('email').value = '';
+    document.getElementById('password').value = '';
+    document.getElementById('active').checked = true;
+}
+
+function editUser(id, username, fullName, email, role, active) {
+    document.getElementById('modal_title').textContent = 'Edit User';
+    document.getElementById('user_id').value = id;
+    document.getElementById('username').value = username;
+    document.getElementById('full_name').value = fullName;
+    document.getElementById('email').value = email;
+    document.getElementById('role').value = role;
+    document.getElementById('active').checked = active;
+    document.getElementById('password_hint').textContent = '(leave blank to keep current)';
+    document.getElementById('password').required = false;
+    document.getElementById('user_modal').style.display = 'flex';
+}
+</script>
+{% endblock %}

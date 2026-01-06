@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Units - Linac QA System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>⚙️ Unit Configuration</h1>
+    <button class="btn btn-primary" onclick="showUnitForm()">+ Add New Unit</button>
+</div>
+
+<!-- Unit Form Modal -->
+<div id="unit_modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modal_title">Add Unit</h2>
+            <button class="modal-close" onclick="hideUnitForm()">&times;</button>
+        </div>
+        <form method="POST" action="/units">
+            <input type="hidden" id="unit_id" name="unit_id" value="new">
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="name">Unit Name *</label>
+                    <input type="text" id="name" name="name" placeholder="e.g., Linac 1, TrueBeam" required>
+                </div>
+                <div class="form-group">
+                    <label for="manufacturer">Manufacturer</label>
+                    <select id="manufacturer" name="manufacturer">
+                        <option value="Varian">Varian</option>
+                        <option value="Elekta">Elekta</option>
+                        <option value="Siemens">Siemens</option>
+                        <option value="Accuray">Accuray</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="model">Model</label>
+                    <input type="text" id="model" name="model" placeholder="e.g., TrueBeam, Versa HD">
+                </div>
+                <div class="form-group">
+                    <label for="serial_number">Serial Number</label>
+                    <input type="text" id="serial_number" name="serial_number" placeholder="e.g., H191234">
+                </div>
+                <div class="form-group">
+                    <label for="location">Location</label>
+                    <input type="text" id="location" name="location" placeholder="e.g., Vault 1">
+                </div>
+                <div class="form-group">
+                    <label for="install_date">Installation Date</label>
+                    <input type="date" id="install_date" name="install_date">
+                </div>
+            </div>
+            
+            <h3>Energy Configuration</h3>
+            <div class="form-group">
+                <label for="photon_energies">Photon Energies (comma-separated)</label>
+                <input type="text" id="photon_energies" name="photon_energies" placeholder="6MV, 10MV, 15MV">
+            </div>
+            <div class="form-group">
+                <label for="fff_energies">FFF Energies (comma-separated)</label>
+                <input type="text" id="fff_energies" name="fff_energies" placeholder="6MV FFF, 10MV FFF">
+            </div>
+            <div class="form-group">
+                <label for="electron_energies">Electron Energies (comma-separated)</label>
+                <input type="text" id="electron_energies" name="electron_energies" placeholder="6MeV, 9MeV, 12MeV, 15MeV">
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn" onclick="hideUnitForm()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Unit</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Units List -->
+<div class="units-grid">
+    {% for unit in units %}
+    <div class="unit-card">
+        <div class="unit-card-header">
+            <h3>{{ unit.name }}</h3>
+            <span class="badge badge-{% if unit.active %}success{% else %}gray{% endif %}">
+                {{ 'Active' if unit.active else 'Inactive' }}
+            </span>
+        </div>
+        <div class="unit-card-body">
+            <p><strong>Manufacturer:</strong> {{ unit.manufacturer or 'N/A' }}</p>
+            <p><strong>Model:</strong> {{ unit.model or 'N/A' }}</p>
+            <p><strong>Serial Number:</strong> <span class="serial">{{ unit.serial_number or 'Not set' }}</span></p>
+            <p><strong>Location:</strong> {{ unit.location or 'N/A' }}</p>
+            
+            <div class="energy-list">
+                <p><strong>Photons:</strong> {{ ', '.join(unit.photon_energies) if unit.photon_energies else 'None' }}</p>
+                {% if unit.fff_energies %}
+                <p><strong>FFF:</strong> {{ ', '.join(unit.fff_energies) }}</p>
+                {% endif %}
+                <p><strong>Electrons:</strong> {{ ', '.join(unit.electron_energies) if unit.electron_energies else 'None' }}</p>
+            </div>
+        </div>
+        <div class="unit-card-footer">
+            <button class="btn btn-sm" onclick="editUnit({{ unit.id }}, '{{ unit.name }}', '{{ unit.manufacturer }}', '{{ unit.model }}', '{{ unit.serial_number }}', '{{ unit.location }}', '{{ unit.install_date or '' }}', '{{ ','.join(unit.photon_energies or []) }}', '{{ ','.join(unit.fff_energies or []) }}', '{{ ','.join(unit.electron_energies or []) }}')">
+                Edit
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function showUnitForm() {
+    document.getElementById('modal_title').textContent = 'Add Unit';
+    document.getElementById('unit_id').value = 'new';
+    document.getElementById('unit_modal').style.display = 'flex';
+}
+
+function hideUnitForm() {
+    document.getElementById('unit_modal').style.display = 'none';
+    // Clear form
+    document.getElementById('name').value = '';
+    document.getElementById('model').value = '';
+    document.getElementById('serial_number').value = '';
+    document.getElementById('location').value = '';
+    document.getElementById('install_date').value = '';
+    document.getElementById('photon_energies').value = '';
+    document.getElementById('fff_energies').value = '';
+    document.getElementById('electron_energies').value = '';
+}
+
+function editUnit(id, name, manufacturer, model, serial, location, installDate, photons, fff, electrons) {
+    document.getElementById('modal_title').textContent = 'Edit Unit';
+    document.getElementById('unit_id').value = id;
+    document.getElementById('name').value = name;
+    document.getElementById('manufacturer').value = manufacturer || 'Varian';
+    document.getElementById('model').value = model;
+    document.getElementById('serial_number').value = serial;
+    document.getElementById('location').value = location;
+    document.getElementById('install_date').value = installDate;
+    document.getElementById('photon_energies').value = photons;
+    document.getElementById('fff_energies').value = fff;
+    document.getElementById('electron_energies').value = electrons;
+    document.getElementById('unit_modal').style.display = 'flex';
+}
+</script>
+{% endblock %}

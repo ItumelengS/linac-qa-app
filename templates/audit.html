@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log - Linac QA System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📝 Audit Log</h1>
+    <div>
+        <a href="/admin/backup" class="btn btn-secondary">💾 Backup Database</a>
+        <a href="/admin/export" class="btn btn-secondary">📤 Export JSON</a>
+    </div>
+</div>
+
+<div class="section">
+    <p class="results-count">Showing last 200 entries</p>
+    
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>Details</th>
+                <th>IP Address</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ log.user or '-' }}</td>
+                <td><span class="badge badge-gray">{{ log.action }}</span></td>
+                <td>{{ log.details or '-' }}</td>
+                <td>{{ log.ip_address or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

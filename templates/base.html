@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Linac QA System{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% if user %}
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="nav-logo">⚡</span>
+            <span>Linac QA System</span>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+            <div class="nav-dropdown">
+                <button class="nav-link">QA Forms ▾</button>
+                <div class="nav-dropdown-content">
+                    <a href="/qa/daily">🌅 Daily QA</a>
+                    <a href="/qa/monthly">📅 Monthly QA</a>
+                    <a href="/qa/quarterly">📆 Quarterly QA</a>
+                    <a href="/qa/annual">🗓️ Annual QA</a>
+                </div>
+            </div>
+            <a href="/history" class="nav-link {% if request.url.path == '/history' %}active{% endif %}">History</a>
+            <a href="/trends" class="nav-link {% if request.url.path == '/trends' %}active{% endif %}">Trends</a>
+            <a href="/units" class="nav-link {% if request.url.path == '/units' %}active{% endif %}">Units</a>
+            {% if user.role == 'admin' %}
+            <div class="nav-dropdown">
+                <button class="nav-link">Admin ▾</button>
+                <div class="nav-dropdown-content">
+                    <a href="/admin/users">👥 Users</a>
+                    <a href="/admin/audit">📝 Audit Log</a>
+                    <a href="/admin/backup">💾 Backup DB</a>
+                    <a href="/admin/export">📤 Export Data</a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="nav-user">
+            <span>{{ user.full_name or user.username }}</span>
+            <a href="/logout" class="btn btn-sm">Logout</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>Linac QA System v1.0 | SASQART Table 24 Compliant | © {{ now().year if now else '2024' }}</p>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

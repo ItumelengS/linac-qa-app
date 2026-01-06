@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Trends - Linac QA System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📈 Output Trends</h1>
+</div>
+
+<div class="form-card">
+    <form method="GET" action="/trends" class="filter-form">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="unit_id">Unit</label>
+                <select id="unit_id" name="unit_id" onchange="updateEnergyOptions()">
+                    <option value="">Select Unit...</option>
+                    {% for unit in units %}
+                    <option value="{{ unit.id }}" 
+                            data-photons="{{ unit.photon_energies|tojson }}"
+                            data-fff="{{ unit.fff_energies|tojson }}"
+                            data-electrons="{{ unit.electron_energies|tojson }}"
+                            {% if selected_unit_id == unit.id %}selected{% endif %}>
+                        {{ unit.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="energy">Energy</label>
+                <select id="energy" name="energy">
+                    <option value="">Select Energy...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="days">Time Range</label>
+                <select id="days" name="days">
+                    <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 Days</option>
+                    <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 Days</option>
+                    <option value="180" {% if days == 180 %}selected{% endif %}>Last 6 Months</option>
+                    <option value="365" {% if days == 365 %}selected{% endif %}>Last Year</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">📊 Load Trends</button>
+    </form>
+</div>
+
+<div class="chart-container">
+    <canvas id="trendChart"></canvas>
+</div>
+
+{% if not trend_data or trend_data == '[]' %}
+<p class="empty-state">Select a unit and energy to view output trends.</p>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function updateEnergyOptions() {
+    const unitSelect = document.getElementById('unit_id');
+    const energySelect = document.getElementById('energy');
+    const selectedOption = unitSelect.options[unitSelect.selectedIndex];
+    
+    energySelect.innerHTML = '<option value="">Select Energy...</option>';
+    
+    if (!selectedOption.value) return;
+    
+    const photons = JSON.parse(selectedOption.dataset.photons || '[]');
+    const fff = JSON.parse(selectedOption.dataset.fff || '[]');
+    const electrons = JSON.parse(selectedOption.dataset.electrons || '[]');
+    
+    [...photons, ...fff, ...electrons].forEach(energy => {
+        const option = document.createElement('option');
+        option.value = energy;
+        option.textContent = energy;
+        energySelect.appendChild(option);
+    });
+}
+
+// Initialize chart
+const trendData = {{ trend_data|safe }};
+if (trendData.length > 0) {
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: trendData.map(d => d.date),
+            datasets: [{
+                label: 'Output Deviation (%)',
+                data: trendData.map(d => d.deviation),
+                borderColor: '#0891b2',
+                backgroundColor: 'rgba(8, 145, 178, 0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                annotation: {
+                    annotations: {
+                        tolerance: {
+                            type: 'box',
+                            yMin: -2,
+                            yMax: 2,
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderColor: 'rgba(16, 185, 129, 0.5)'
+                        },
+                        action: {
+                            type: 'line',
+                            yMin: 3,
+                            yMax: 3,
+                            borderColor: 'rgba(239, 68, 68, 0.5)',
+                            borderDash: [5, 5]
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    title: { display: true, text: 'Deviation (%)' },
+                    suggestedMin: -5,
+                    suggestedMax: 5
+                }
+            }
+        }
+    });
+}
+
+// Initialize energy dropdown if unit is pre-selected
+{% if selected_unit_id %}
+updateEnergyOptions();
+document.getElementById('energy').value = '{{ selected_energy or '' }}';
+{% endif %}
+</script>
+{% endblock %}

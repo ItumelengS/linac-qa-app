@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Linac QA System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📊 Dashboard</h1>
+    <p>{{ today.strftime('%A, %B %d, %Y') }}</p>
+</div>
+
+<!-- QA Status Cards -->
+<div class="status-grid">
+    {% for status in qa_status %}
+    <div class="status-card">
+        <div class="status-card-header">
+            <h3>{{ status.unit.name }}</h3>
+            <span class="badge badge-{% if status.unit.active %}success{% else %}gray{% endif %}">
+                {{ 'Active' if status.unit.active else 'Inactive' }}
+            </span>
+        </div>
+        <div class="status-card-body">
+            <p class="unit-info">
+                {{ status.unit.manufacturer }} {{ status.unit.model }}<br>
+                <strong>S/N:</strong> {{ status.unit.serial_number or 'Not set' }}
+            </p>
+            
+            <div class="qa-status-row">
+                <span>Daily QA:</span>
+                {% if status.daily_due %}
+                <span class="badge badge-warning">Due Today</span>
+                {% else %}
+                <span class="badge badge-success">Done {{ status.last_daily }}</span>
+                {% endif %}
+            </div>
+            
+            <div class="qa-status-row">
+                <span>Monthly QA:</span>
+                {% if status.monthly_due %}
+                <span class="badge badge-warning">Due</span>
+                {% else %}
+                <span class="badge badge-success">{{ status.last_monthly }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="status-card-footer">
+            <a href="/qa/daily?unit_id={{ status.unit.id }}" class="btn btn-primary btn-sm">Start Daily QA</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Quick Actions -->
+<div class="section">
+    <h2>Quick Actions</h2>
+    <div class="quick-actions">
+        <a href="/qa/daily" class="quick-action-btn daily">
+            <span class="icon">🌅</span>
+            <span>Daily QA</span>
+        </a>
+        <a href="/qa/monthly" class="quick-action-btn monthly">
+            <span class="icon">📅</span>
+            <span>Monthly QA</span>
+        </a>
+        <a href="/qa/quarterly" class="quick-action-btn quarterly">
+            <span class="icon">📆</span>
+            <span>Quarterly QA</span>
+        </a>
+        <a href="/qa/annual" class="quick-action-btn annual">
+            <span class="icon">🗓️</span>
+            <span>Annual QA</span>
+        </a>
+    </div>
+</div>
+
+<!-- Recent Reports -->
+<div class="section">
+    <h2>Recent Reports</h2>
+    {% if recent_reports %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Unit</th>
+                <th>Performer</th>
+                <th>Results</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for report in recent_reports %}
+            <tr>
+                <td>{{ report.date }}</td>
+                <td><span class="badge badge-{{ report.qa_type }}">{{ report.qa_type|upper }}</span></td>
+                <td>{{ report.unit.name }}</td>
+                <td>{{ report.performer }}</td>
+                <td>
+                    <span class="badge badge-success">{{ report.pass_count }} Pass</span>
+                    {% if report.fail_count > 0 %}
+                    <span class="badge badge-error">{{ report.fail_count }} Fail</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/report/{{ report.id }}" class="btn btn-sm">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No reports yet. Start by completing a Daily QA.</p>
+    {% endif %}
+</div>
+{% endblock %}
