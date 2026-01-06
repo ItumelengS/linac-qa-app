@@ -4,27 +4,17 @@ import { type NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
   const token_hash = searchParams.get("token_hash");
-  const type = searchParams.get("type");
+  const type = searchParams.get("type") as "signup" | "email" | "recovery" | "invite" | null;
   const next = searchParams.get("next") ?? "/dashboard";
 
-  const supabase = await createClient();
-
-  // Handle PKCE flow (code exchange)
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
-    }
-  }
-
-  // Handle email confirmation with token_hash
   if (token_hash && type) {
+    const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({
-      type: type as "signup" | "email" | "recovery" | "invite",
+      type,
       token_hash,
     });
+
     if (!error) {
       // For recovery (password reset), redirect to reset-password page
       if (type === "recovery") {
@@ -35,5 +25,5 @@ export async function GET(request: NextRequest) {
   }
 
   // Return the user to an error page with instructions
-  return NextResponse.redirect(`${origin}/login?error=Could not authenticate user`);
+  return NextResponse.redirect(`${origin}/login?error=Could not verify email. The link may have expired.`);
 }
