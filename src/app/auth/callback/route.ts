@@ -1,7 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import { type NextRequest } from "next/server";
-import { cookies } from "next/headers";
 import type { CookieOptions } from "@supabase/ssr";
 
 type CookieToSet = {
@@ -17,7 +16,8 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get("type");
   const next = searchParams.get("next") ?? "/dashboard";
 
-  const cookieStore = await cookies();
+  // Store cookies to set on the response
+  const cookiesToSet: CookieToSet[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,12 +25,10 @@ export async function GET(request: NextRequest) {
     {
       cookies: {
         getAll() {
-          return cookieStore.getAll();
+          return request.cookies.getAll();
         },
-        setAll(cookiesToSet: CookieToSet[]) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
+        setAll(cookies: CookieToSet[]) {
+          cookiesToSet.push(...cookies);
         },
       },
     }
@@ -40,7 +38,11 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+      const response = NextResponse.redirect(`${origin}${next}`);
+      cookiesToSet.forEach(({ name, value, options }) => {
+        response.cookies.set(name, value, options);
+      });
+      return response;
     }
   }
 
@@ -52,10 +54,15 @@ export async function GET(request: NextRequest) {
     });
     if (!error) {
       // For recovery (password reset), redirect to reset-password page
-      if (type === "recovery") {
-        return NextResponse.redirect(`${origin}/reset-password`);
-      }
-      return NextResponse.redirect(`${origin}${next}`);
+      const redirectUrl = type === "recovery"
+        ? `${origin}/reset-password`
+        : `${origin}${next}`;
+
+      const response = NextResponse.redirect(redirectUrl);
+      cookiesToSet.forEach(({ name, value, options }) => {
+        response.cookies.set(name, value, options);
+      });
+      return response;
     }
   }
 
