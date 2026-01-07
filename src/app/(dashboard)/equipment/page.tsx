@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import {
   EquipmentType,
   EQUIPMENT_TYPE_LABELS,
+  Equipment,
 } from "@/types/database";
 
 const EQUIPMENT_TYPES: EquipmentType[] = [
@@ -26,8 +27,12 @@ const EQUIPMENT_TYPES: EquipmentType[] = [
 ];
 
 export default function EquipmentPage() {
-  const { user, isLoaded } = useUser();
+  const { isLoaded } = useUser();
   const [showAddForm, setShowAddForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     equipment_type: "linac" as EquipmentType,
@@ -40,6 +45,32 @@ export default function EquipmentPage() {
     electron_energies: [] as string[],
   });
 
+  // Fetch equipment on load
+  useEffect(() => {
+    if (isLoaded) {
+      fetchEquipment();
+    }
+  }, [isLoaded]);
+
+  const fetchEquipment = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/equipment");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch equipment");
+      }
+
+      setEquipment(data.equipment || []);
+    } catch (err) {
+      console.error("Error fetching equipment:", err);
+      setError(err instanceof Error ? err.message : "Failed to load equipment");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEnergyChange = (
     type: "photon_energies" | "electron_energies",
     value: string
@@ -50,10 +81,49 @@ export default function EquipmentPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert("Equipment will be saved once organization setup is complete. Please set up your organization first.");
+    setError(null);
+    setSaving(true);
+
+    try {
+      const response = await fetch("/api/equipment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to add equipment");
+      }
+
+      // Add the new equipment to the list
+      setEquipment((prev) => [...prev, data.equipment]);
+
+      // Reset form
+      setFormData({
+        name: "",
+        equipment_type: "linac",
+        manufacturer: "",
+        model: "",
+        serial_number: "",
+        location: "",
+        room_number: "",
+        photon_energies: [],
+        electron_energies: [],
+      });
+      setShowAddForm(false);
+    } catch (err) {
+      console.error("Error saving equipment:", err);
+      setError(err instanceof Error ? err.message : "Failed to add equipment");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (!isLoaded) {
+  if (!isLoaded || loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -91,20 +161,20 @@ export default function EquipmentPage() {
         </button>
       </div>
 
-      {/* Setup Notice */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start">
-          <svg className="w-5 h-5 text-blue-600 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <div>
-            <h3 className="font-medium text-blue-900">Organization Setup Required</h3>
-            <p className="text-sm text-blue-700 mt-1">
-              Equipment management will be available after your organization is set up and linked to your account.
-            </p>
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <svg className="w-5 h-5 text-red-600 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <h3 className="font-medium text-red-900">Error</h3>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Add Equipment Form */}
       {showAddForm && (
@@ -238,35 +308,92 @@ export default function EquipmentPage() {
             <div className="flex justify-end pt-4">
               <button
                 type="submit"
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                disabled={saving}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
-                Add Equipment
+                {saving ? "Saving..." : "Add Equipment"}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Empty State */}
-      <div className="bg-white rounded-lg shadow p-8 text-center">
-        <svg
-          className="w-12 h-12 text-gray-400 mx-auto mb-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
-          />
-        </svg>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">No equipment added</h3>
-        <p className="text-gray-500">
-          Add your first piece of equipment to start tracking QA.
-        </p>
-      </div>
+      {/* Equipment List */}
+      {equipment.length > 0 ? (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Type
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Manufacturer / Model
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Location
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {equipment.map((item) => (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                    {item.serial_number && (
+                      <div className="text-xs text-gray-500">S/N: {item.serial_number}</div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {EQUIPMENT_TYPE_LABELS[item.equipment_type]}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {[item.manufacturer, item.model].filter(Boolean).join(" - ") || "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.location || item.room_number || "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      item.active
+                        ? "bg-green-100 text-green-800"
+                        : "bg-gray-100 text-gray-800"
+                    }`}>
+                      {item.active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <svg
+            className="w-12 h-12 text-gray-400 mx-auto mb-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+            />
+          </svg>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No equipment added</h3>
+          <p className="text-gray-500">
+            Add your first piece of equipment to start tracking QA.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
