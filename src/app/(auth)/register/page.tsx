@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -12,15 +11,13 @@ export default function RegisterPage() {
     confirmPassword: "",
     fullName: "",
     organizationName: "",
-    role: "physicist" as "admin" | "physicist" | "therapist",
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({
       ...prev,
       [e.target.name]: e.target.value,
@@ -47,72 +44,32 @@ export default function RegisterPage() {
     }
 
     try {
-      // Create organization slug from name
-      const slug = formData.organizationName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)/g, "");
-
-      // Sign up the user
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-            role: "admin", // First user of org is always admin
-          },
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          fullName: formData.fullName,
+          organizationName: formData.organizationName,
+        }),
       });
 
-      if (signUpError) {
-        setError(signUpError.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Registration failed");
         return;
-      }
-
-      if (!authData.user) {
-        setError("Failed to create user");
-        return;
-      }
-
-      // Create the organization
-      const { data: orgData, error: orgError } = await supabase
-        .from("organizations")
-        .insert({
-          name: formData.organizationName,
-          slug: slug,
-        })
-        .select()
-        .single();
-
-      if (orgError) {
-        // If organization creation fails, the profile trigger will still create a profile
-        // We should update the profile later
-        console.error("Organization creation error:", orgError);
-      }
-
-      // Update the profile with the organization ID
-      if (orgData) {
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update({
-            organization_id: orgData.id,
-            role: "admin",
-          })
-          .eq("id", authData.user.id);
-
-        if (profileError) {
-          console.error("Profile update error:", profileError);
-        }
       }
 
       setSuccess(true);
 
-      // If email confirmation is not required, redirect to dashboard
-      if (authData.session) {
-        router.push("/dashboard");
-        router.refresh();
-      }
+      // Redirect to login after 2 seconds
+      setTimeout(() => {
+        router.push("/login");
+      }, 2000);
     } catch {
       setError("An unexpected error occurred");
     } finally {
@@ -132,7 +89,7 @@ export default function RegisterPage() {
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">Registration Successful!</h2>
             <p className="text-gray-600 mb-4">
-              Please check your email to confirm your account before signing in.
+              Your account has been created. Redirecting to login...
             </p>
             <Link
               href="/login"
