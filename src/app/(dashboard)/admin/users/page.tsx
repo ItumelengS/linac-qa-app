@@ -1,60 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { Profile, ROLE_LABELS } from "@/types/database";
+import { useState } from "react";
+import { useUser } from "@clerk/nextjs";
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Administrator",
+  physicist: "Medical Physicist",
+  therapist: "Radiation Therapist",
+};
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user, isLoaded } = useUser();
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"physicist" | "therapist">("therapist");
   const [inviting, setInviting] = useState(false);
 
-  const supabase = createClient();
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const loadUsers = async () => {
-    setLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-
-      if (profileData?.organization_id) {
-        const { data: usersData } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("organization_id", profileData.organization_id)
-          .order("full_name");
-
-        setUsers(usersData || []);
-      }
-    } catch {
-      console.error("Error loading users");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     setInviting(true);
-    // Invitation logic would go here
-    alert("Invitation feature coming soon!");
+    alert("User invitations will be available once organization setup is complete.");
     setInviting(false);
     setInviteEmail("");
   };
 
-  if (loading) {
+  if (!isLoaded) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -99,7 +68,7 @@ export default function UsersPage() {
         </form>
       </div>
 
-      {/* Users List */}
+      {/* Current User */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -119,42 +88,41 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {users.map((user) => (
-              <tr key={user.id}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                      {user.full_name?.charAt(0).toUpperCase() || "U"}
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">{user.full_name}</p>
-                      {user.hpcsa_number && (
-                        <p className="text-xs text-gray-500">HPCSA: {user.hpcsa_number}</p>
-                      )}
-                    </div>
+            <tr>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <div className="flex items-center">
+                  <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
+                    {user?.firstName?.charAt(0).toUpperCase() || user?.emailAddresses[0]?.emailAddress?.charAt(0).toUpperCase() || "U"}
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {user.email}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {ROLE_LABELS[user.role]}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      user.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {user.is_active ? "Active" : "Inactive"}
-                  </span>
-                </td>
-              </tr>
-            ))}
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-gray-900">
+                      {user?.fullName || user?.firstName || "User"}
+                    </p>
+                  </div>
+                </div>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {user?.emailAddresses[0]?.emailAddress}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {ROLE_LABELS.admin}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                  Active
+                </span>
+              </td>
+            </tr>
           </tbody>
         </table>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h3 className="font-medium text-blue-900 mb-2">Team Management</h3>
+        <p className="text-sm text-blue-700">
+          Invite medical physicists and radiation therapists to your organization.
+          Each user can have different permission levels based on their role.
+        </p>
       </div>
     </div>
   );
