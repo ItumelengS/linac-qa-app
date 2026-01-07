@@ -3,6 +3,63 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { EquipmentType } from "@/types/database";
 
+// Helper function to get or create profile
+async function getOrCreateProfile(supabase: ReturnType<typeof createClient>, userId: string) {
+  const user = await currentUser();
+  const userEmail = user?.emailAddresses[0]?.emailAddress || "";
+  const userName = user?.fullName || user?.firstName || "User";
+
+  // Try to get existing profile
+  let { data: profile } = await supabase
+    .from("profiles")
+    .select("*, organizations(*)")
+    .eq("clerk_id", userId)
+    .single();
+
+  // If no profile exists, create one with a new organization
+  if (!profile) {
+    const orgSlug = userEmail.split("@")[0] + "-" + Date.now().toString(36);
+    const { data: newOrg, error: orgError } = await supabase
+      .from("organizations")
+      .insert({
+        name: `${userName}'s Organization`,
+        slug: orgSlug,
+        subscription_tier: "free",
+        subscription_status: "trial",
+        max_equipment: 5,
+      })
+      .select()
+      .single();
+
+    if (orgError) {
+      console.error("Error creating organization:", orgError);
+      return null;
+    }
+
+    const { data: newProfile, error: profileError } = await supabase
+      .from("profiles")
+      .insert({
+        clerk_id: userId,
+        organization_id: newOrg.id,
+        email: userEmail,
+        full_name: userName,
+        role: "admin",
+        is_active: true,
+      })
+      .select("*, organizations(*)")
+      .single();
+
+    if (profileError) {
+      console.error("Error creating profile:", profileError);
+      return null;
+    }
+
+    profile = newProfile;
+  }
+
+  return profile;
+}
+
 // GET - List all equipment for the user's organization
 export async function GET() {
   try {
@@ -13,12 +70,8 @@ export async function GET() {
 
     const supabase = createClient();
 
-    // Get user's profile and organization
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("clerk_id", userId)
-      .single();
+    // Get or create user's profile and organization
+    const profile = await getOrCreateProfile(supabase, userId);
 
     if (!profile?.organization_id) {
       return NextResponse.json({ equipment: [] });
@@ -59,54 +112,7 @@ export async function POST(request: NextRequest) {
     const supabase = createClient();
 
     // Get or create profile and organization
-    let { data: profile } = await supabase
-      .from("profiles")
-      .select("*, organizations(*)")
-      .eq("clerk_id", userId)
-      .single();
-
-    // If no profile exists, create one with a new organization
-    if (!profile) {
-      // Create a new organization for this user
-      const orgSlug = userEmail.split("@")[0] + "-" + Date.now().toString(36);
-      const { data: newOrg, error: orgError } = await supabase
-        .from("organizations")
-        .insert({
-          name: `${userName}'s Organization`,
-          slug: orgSlug,
-          subscription_tier: "free",
-          subscription_status: "trial",
-          max_equipment: 5,
-        })
-        .select()
-        .single();
-
-      if (orgError) {
-        console.error("Error creating organization:", orgError);
-        return NextResponse.json({ error: "Failed to create organization" }, { status: 500 });
-      }
-
-      // Create the profile
-      const { data: newProfile, error: profileError } = await supabase
-        .from("profiles")
-        .insert({
-          clerk_id: userId,
-          organization_id: newOrg.id,
-          email: userEmail,
-          full_name: userName,
-          role: "admin",
-          is_active: true,
-        })
-        .select("*, organizations(*)")
-        .single();
-
-      if (profileError) {
-        console.error("Error creating profile:", profileError);
-        return NextResponse.json({ error: "Failed to create profile" }, { status: 500 });
-      }
-
-      profile = newProfile;
-    }
+    const profile = await getOrCreateProfile(supabase, userId);
 
     if (!profile?.organization_id) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 });
