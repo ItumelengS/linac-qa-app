@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,7 +11,15 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  useEffect(() => {
+    const errorParam = searchParams.get("error");
+    if (errorParam) {
+      setError(errorParam);
+    }
+  }, [searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,6 +116,12 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-gray-500 mt-4">
           SASQART compliant QA management for radiation oncology
+        </p>
+
+        <p className="text-center text-xs text-gray-400 mt-2">
+          <a href="/auth/signout" className="hover:underline">
+            Having trouble signing in? Click here to reset your session
+          </a>
         </p>
       </div>
     </div>
