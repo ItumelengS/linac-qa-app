@@ -9,7 +9,9 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [useMagicLink, setUseMagicLink] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -21,9 +23,10 @@ function LoginForm() {
     }
   }, [searchParams]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setMessage(null);
     setLoading(true);
 
     try {
@@ -46,6 +49,33 @@ function LoginForm() {
     }
   };
 
+  const handleMagicLinkLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      setMessage("Check your email for a login link!");
+    } catch {
+      setError("An unexpected error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 to-white px-4">
       <div className="w-full max-w-md">
@@ -61,50 +91,113 @@ function LoginForm() {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email address
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="you@hospital.co.za"
-              />
+          {message && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-sm">
+              {message}
             </div>
+          )}
 
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  Password
-                </label>
-                <Link href="/forgot-password" className="text-sm text-primary hover:underline">
-                  Forgot password?
-                </Link>
-              </div>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Enter your password"
-              />
-            </div>
-
+          {/* Toggle between password and magic link */}
+          <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={() => setUseMagicLink(false)}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+                !useMagicLink
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
             >
-              {loading ? "Signing in..." : "Sign in"}
+              Password
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => setUseMagicLink(true)}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+                useMagicLink
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Magic Link
+            </button>
+          </div>
+
+          {useMagicLink ? (
+            <form onSubmit={handleMagicLinkLogin} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                  Email address
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="you@hospital.co.za"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Sending..." : "Send Magic Link"}
+              </button>
+
+              <p className="text-xs text-gray-500 text-center">
+                We&apos;ll email you a link to sign in instantly - no password needed
+              </p>
+            </form>
+          ) : (
+            <form onSubmit={handlePasswordLogin} className="space-y-4">
+              <div>
+                <label htmlFor="email-pw" className="block text-sm font-medium text-gray-700 mb-1">
+                  Email address
+                </label>
+                <input
+                  id="email-pw"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="you@hospital.co.za"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                    Password
+                  </label>
+                  <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                    Forgot password?
+                  </Link>
+                </div>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="Enter your password"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Signing in..." : "Sign in"}
+              </button>
+            </form>
+          )}
 
           <div className="mt-6 text-center text-sm">
             <span className="text-gray-600">Don&apos;t have an account? </span>
