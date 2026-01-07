@@ -1,5 +1,5 @@
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { getUserProfile } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/sidebar";
 
 export default async function DashboardLayout({
@@ -7,11 +7,22 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const profile = await getUserProfile();
+  const { userId } = await auth();
 
-  if (!profile) {
-    redirect("/login");
+  if (!userId) {
+    redirect("/sign-in");
   }
+
+  const user = await currentUser();
+
+  // Create a profile-like object from Clerk user data
+  const profile = {
+    id: userId,
+    email: user?.emailAddresses[0]?.emailAddress || "",
+    full_name: user?.fullName || user?.firstName || "User",
+    role: "admin" as const, // Default role, will be synced from database
+    organization_id: null as string | null,
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">

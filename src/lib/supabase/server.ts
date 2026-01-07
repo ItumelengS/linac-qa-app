@@ -1,69 +1,45 @@
-import { createServerClient } from "@supabase/ssr";
-import type { CookieOptions } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { auth } from "@clerk/nextjs/server";
 
-type CookieToSet = {
-  name: string;
-  value: string;
-  options?: CookieOptions;
-};
-
-export async function createClient() {
-  const cookieStore = await cookies();
-
-  return createServerClient(
+// Create a Supabase client for server-side database operations
+// Note: We use the service role key to bypass RLS when needed
+export function createClient() {
+  return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet: CookieToSet[]) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
-    }
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 }
 
-export async function getSession() {
-  const supabase = await createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session;
-}
-
-export async function getUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
-}
-
 export async function getUserProfile() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { userId } = await auth();
 
-  if (!user) return null;
+  if (!userId) return null;
+
+  const supabase = createClient();
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("*, organizations(*)")
-    .eq("id", user.id)
+    .eq("clerk_id", userId)
     .single();
 
+  return profile;
+}
+
+export async function getOrCreateProfile() {
+  const { userId } = await auth();
+
+  if (!userId) return null;
+
+  const supabase = createClient();
+
+  // Try to get existing profile
+  let { data: profile } = await supabase
+    .from("profiles")
+    .select("*, organizations(*)")
+    .eq("clerk_id", userId)
+    .single();
+
+  // If no profile exists, we'll create one later when organization is set up
   return profile;
 }

@@ -2,14 +2,27 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { Profile, ROLE_LABELS } from "@/types/database";
+import { usePathname } from "next/navigation";
+import { SignOutButton, UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
+
+interface Profile {
+  id: string;
+  email: string;
+  full_name: string;
+  role: "admin" | "physicist" | "therapist";
+  organization_id: string | null;
+}
 
 interface SidebarProps {
   profile: Profile;
 }
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Administrator",
+  physicist: "Medical Physicist",
+  therapist: "Radiation Therapist",
+};
 
 const navigation = [
   {
@@ -100,18 +113,9 @@ const adminNavigation = [
 
 export function Sidebar({ profile }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
-  const supabase = createClient();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  };
-
   const isAdmin = profile.role === "admin";
-  const orgName = profile.organizations?.name || "Organization";
 
   return (
     <>
@@ -156,12 +160,6 @@ export function Sidebar({ profile }: SidebarProps) {
               <span className="font-bold text-xl text-primary">SASQART</span>
               <span className="ml-2 text-sm text-gray-500">QA System</span>
             </Link>
-          </div>
-
-          {/* Organization */}
-          <div className="px-4 py-3 border-b bg-gray-50">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Organization</p>
-            <p className="font-medium text-gray-900 truncate">{orgName}</p>
           </div>
 
           {/* Navigation */}
@@ -220,9 +218,7 @@ export function Sidebar({ profile }: SidebarProps) {
           {/* User profile */}
           <div className="p-4 border-t">
             <div className="flex items-center">
-              <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-                {profile.full_name?.charAt(0).toUpperCase() || "U"}
-              </div>
+              <UserButton afterSignOutUrl="/" />
               <div className="ml-3 flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
                   {profile.full_name}
@@ -230,15 +226,14 @@ export function Sidebar({ profile }: SidebarProps) {
                 <p className="text-xs text-gray-500">{ROLE_LABELS[profile.role]}</p>
               </div>
             </div>
-            <button
-              onClick={handleSignOut}
-              className="mt-3 w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Sign out
-            </button>
+            <SignOutButton>
+              <button className="mt-3 w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign out
+              </button>
+            </SignOutButton>
           </div>
         </div>
       </div>

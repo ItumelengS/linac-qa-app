@@ -1,6 +1,15 @@
 import Link from "next/link";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+export default async function Home() {
+  const { userId } = await auth();
+
+  // If user is signed in, redirect to dashboard
+  if (userId) {
+    redirect("/dashboard");
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-blue-50 to-white">
       <div className="text-center max-w-2xl px-4">
@@ -13,13 +22,13 @@ export default function Home() {
         </p>
         <div className="flex gap-4 justify-center">
           <Link
-            href="/login"
+            href="/sign-in"
             className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
           >
             Sign In
           </Link>
           <Link
-            href="/register"
+            href="/sign-up"
             className="px-6 py-3 bg-secondary text-secondary-foreground rounded-lg font-medium hover:bg-secondary/80 transition-colors"
           >
             Register
