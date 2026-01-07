@@ -150,7 +150,7 @@ export default function QAPage() {
                     {frequencies.map((freq) => (
                       <Link
                         key={freq}
-                        href={`/qa/${item.equipment_type}?equipment=${item.id}&frequency=${freq}`}
+                        href={`/qa/${item.equipment_type}/${freq}?equipment=${item.id}`}
                         className="px-4 py-2 bg-primary/10 text-primary rounded-md hover:bg-primary hover:text-primary-foreground transition-colors text-sm font-medium"
                       >
                         {FREQUENCY_LABELS[freq]}

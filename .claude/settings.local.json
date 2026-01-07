@@ -12,7 +12,9 @@
       "Bash(git push:*)",
       "Bash(git fetch:*)",
       "Bash(git pull:*)",
-      "WebFetch(domain:linac-qa-app.vercel.app)"
+      "WebFetch(domain:linac-qa-app.vercel.app)",
+      "Bash(npm run build:*)",
+      "Bash(ls:*)"
     ]
   }
 }
