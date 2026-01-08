@@ -33,6 +33,14 @@ export type UserRole = "admin" | "physicist" | "therapist";
 
 export type QAStatus = "pass" | "fail" | "na" | "";
 
+export type CalculatorType =
+  | "position_deviation"      // Expected vs Measured position (mm)
+  | "percentage_difference"   // Reference vs Measured (%)
+  | "dwell_time"              // Set time vs Measured time (%)
+  | "timer_linearity"         // Multiple time points, max deviation
+  | "transit_reproducibility" // Multiple readings, mean + variation
+  | "source_decay_check";     // Source decay verification
+
 export type ReportStatus = "draft" | "submitted" | "reviewed" | "approved" | "rejected";
 
 export type OverallResult = "pass" | "fail" | "conditional";
@@ -105,6 +113,7 @@ export interface QATestDefinition {
   category?: string;
   requires_measurement: boolean;
   measurement_unit?: string;
+  calculator_type?: CalculatorType;
   display_order: number;
   is_active: boolean;
   created_at: string;
@@ -198,6 +207,53 @@ export interface Invitation {
   expires_at: string;
   accepted_at?: string;
   created_at: string;
+}
+
+// Baseline value types for each calculator
+export interface SourceDecayBaseline {
+  initial_activity: number;
+  calibration_date: string;
+  unit?: string; // Ci, mCi, GBq, TBq
+  min_usable_activity?: number;
+}
+
+export interface PositionDeviationBaseline {
+  expected_position: number;
+}
+
+export interface DwellTimeBaseline {
+  set_time: number;
+}
+
+export interface PercentageDifferenceBaseline {
+  reference_value: number;
+}
+
+export interface TimerLinearityBaseline {
+  time_points: number[]; // e.g., [10, 30, 60, 120]
+}
+
+export type BaselineValues =
+  | SourceDecayBaseline
+  | PositionDeviationBaseline
+  | DwellTimeBaseline
+  | PercentageDifferenceBaseline
+  | TimerLinearityBaseline
+  | Record<string, unknown>;
+
+export interface EquipmentBaseline {
+  id: string;
+  equipment_id: string;
+  test_id: string;
+  values: BaselineValues;
+  source_serial?: string;  // Serial number of the source this baseline applies to
+  is_current: boolean;     // Only one baseline per equipment+test can be current
+  valid_from: string;      // When this baseline became active
+  valid_until?: string;    // When superseded (null = still current)
+  superseded_by?: string;  // ID of the baseline that replaced this one
+  notes?: string;
+  created_at: string;
+  created_by?: string;
 }
 
 // Equipment type display names

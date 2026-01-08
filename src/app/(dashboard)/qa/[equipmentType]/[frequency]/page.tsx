@@ -9,9 +9,12 @@ import {
   QAFrequency,
   QATestDefinition,
   QAStatus,
+  CalculatorType,
+  BaselineValues,
   EQUIPMENT_TYPE_LABELS,
   FREQUENCY_LABELS,
 } from "@/types/database";
+import { InlineCalculator, CalculatorResult } from "@/components/qa-calculators";
 
 interface TestResult {
   test_id: string;
@@ -119,6 +122,7 @@ function QAFormContent() {
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [tests, setTests] = useState<QATestDefinition[]>([]);
   const [results, setResults] = useState<Record<string, TestResult>>({});
+  const [baselines, setBaselines] = useState<Record<string, { values: BaselineValues; notes?: string }>>({});
   const [comments, setComments] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -151,6 +155,20 @@ function QAFormContent() {
         };
       });
       setResults(initialResults);
+
+      // Fetch baselines for this equipment
+      if (data.equipment?.id) {
+        try {
+          const baselineResponse = await fetch(`/api/equipment/${data.equipment.id}/baselines`);
+          if (baselineResponse.ok) {
+            const baselineData = await baselineResponse.json();
+            setBaselines(baselineData.baselines || {});
+          }
+        } catch (err) {
+          console.error("Error fetching baselines:", err);
+          // Non-critical error, continue without baselines
+        }
+      }
     } catch (err) {
       console.error("Error loading data:", err);
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -217,6 +235,117 @@ function QAFormContent() {
         notes,
       },
     }));
+  };
+
+  // Handler for inline calculator results
+  const handleCalculatorUpdate = (testId: string, result: CalculatorResult) => {
+    setResults((prev) => ({
+      ...prev,
+      [testId]: {
+        ...prev[testId],
+        measurement: result.measurement,
+        baseline_value: result.baseline_value,
+        deviation: result.deviation,
+        status: result.status || prev[testId]?.status || "",
+        notes: result.notes || prev[testId]?.notes || "",
+      },
+    }));
+  };
+
+  // Handler for saving baseline values
+  const handleSaveBaseline = async (testId: string, values: BaselineValues) => {
+    if (!equipment) return;
+
+    try {
+      const response = await fetch(`/api/equipment/${equipment.id}/baselines`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test_id: testId, values }),
+      });
+
+      if (response.ok) {
+        setBaselines((prev) => ({
+          ...prev,
+          [testId]: { values },
+        }));
+      }
+    } catch (err) {
+      console.error("Error saving baseline:", err);
+    }
+  };
+
+  // Handler for saving all current measurements as baselines
+  const [savingBaselines, setSavingBaselines] = useState(false);
+  const [baselineSaveMessage, setBaselineSaveMessage] = useState<string | null>(null);
+
+  const handleSetAllAsBaseline = async () => {
+    if (!equipment) return;
+
+    setSavingBaselines(true);
+    setBaselineSaveMessage(null);
+
+    try {
+      const testsWithMeasurements = tests.filter(
+        (test) => test.requires_measurement && results[test.test_id]?.measurement !== undefined
+      );
+
+      if (testsWithMeasurements.length === 0) {
+        setBaselineSaveMessage("No measurements to save as baselines");
+        setSavingBaselines(false);
+        return;
+      }
+
+      let savedCount = 0;
+      for (const test of testsWithMeasurements) {
+        const result = results[test.test_id];
+        let values: BaselineValues = {};
+
+        // Build values based on calculator type
+        if (test.calculator_type === "source_decay_check") {
+          // For source decay, we need initial_activity and calibration_date from current state
+          const existingBaseline = baselines[test.test_id]?.values as { initial_activity?: number; calibration_date?: string };
+          if (existingBaseline?.initial_activity && existingBaseline?.calibration_date) {
+            values = existingBaseline; // Keep existing source data
+          }
+        } else if (test.calculator_type === "position_deviation") {
+          values = { expected_position: result.baseline_value || result.measurement };
+        } else if (test.calculator_type === "dwell_time") {
+          values = { set_time: result.baseline_value || result.measurement };
+        } else if (test.calculator_type === "percentage_difference") {
+          values = { reference_value: result.baseline_value || result.measurement };
+        } else if (test.calculator_type === "timer_linearity") {
+          const existingBaseline = baselines[test.test_id]?.values as { time_points?: number[] };
+          values = { time_points: existingBaseline?.time_points || [10, 30, 60, 120] };
+        } else {
+          // Generic measurement-based baseline
+          values = { reference_value: result.measurement };
+        }
+
+        if (Object.keys(values).length > 0) {
+          const response = await fetch(`/api/equipment/${equipment.id}/baselines`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ test_id: test.test_id, values }),
+          });
+
+          if (response.ok) {
+            savedCount++;
+            setBaselines((prev) => ({
+              ...prev,
+              [test.test_id]: { values },
+            }));
+          }
+        }
+      }
+
+      setBaselineSaveMessage(`Saved ${savedCount} baseline${savedCount !== 1 ? 's' : ''} successfully`);
+      setTimeout(() => setBaselineSaveMessage(null), 3000);
+    } catch (err) {
+      console.error("Error saving baselines:", err);
+      setBaselineSaveMessage("Error saving baselines");
+    } finally {
+      setSavingBaselines(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -328,13 +457,30 @@ function QAFormContent() {
             {equipment.name} - {EQUIPMENT_TYPE_LABELS[equipmentType]}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           <button
             onClick={setAllPass}
             className="px-3 py-2 text-sm bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
           >
             Mark All Functional Pass
           </button>
+          <button
+            onClick={handleSetAllAsBaseline}
+            disabled={savingBaselines}
+            className="px-3 py-2 text-sm bg-amber-100 text-amber-700 rounded-md hover:bg-amber-200 transition-colors disabled:opacity-50 flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            {savingBaselines ? "Saving..." : "Set as Baseline"}
+          </button>
+          {baselineSaveMessage && (
+            <span className={`text-sm px-2 py-1 rounded ${
+              baselineSaveMessage.includes("Error") ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+            }`}>
+              {baselineSaveMessage}
+            </span>
+          )}
         </div>
       </div>
 
@@ -386,8 +532,55 @@ function QAFormContent() {
                           </div>
                         </div>
 
-                        {/* Measurement inputs for tests that require them */}
-                        {test.requires_measurement ? (
+                        {/* Inline Calculator for tests with calculator_type */}
+                        {test.calculator_type ? (
+                          <div className="space-y-3">
+                            <InlineCalculator
+                              calculatorType={test.calculator_type}
+                              testId={test.test_id}
+                              tolerance={test.tolerance}
+                              actionLevel={test.action_level}
+                              initialValues={baselines[test.test_id]?.values}
+                              onUpdate={(calcResult) => handleCalculatorUpdate(test.test_id, calcResult)}
+                              onSaveBaseline={(values) => handleSaveBaseline(test.test_id, values)}
+                            />
+                            {/* Status display, override buttons, and Set as Baseline */}
+                            <div className="flex flex-wrap items-center gap-3">
+                              {result?.status && (
+                                <div className={`px-3 py-1.5 rounded-md text-sm font-medium ${
+                                  result.status === "pass"
+                                    ? "bg-green-100 text-green-800"
+                                    : result.status === "fail"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}>
+                                  {result.status === "pass" ? "✓ PASS" : result.status === "fail" ? "✗ FAIL" : "N/A"}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-gray-400 mr-1">Override:</span>
+                                {["pass", "fail", "na"].map((status) => (
+                                  <button
+                                    key={status}
+                                    type="button"
+                                    onClick={() => updateStatus(test.test_id, status as QAStatus)}
+                                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                      result?.status === status
+                                        ? status === "pass"
+                                          ? "bg-green-500 text-white"
+                                          : status === "fail"
+                                          ? "bg-red-500 text-white"
+                                          : "bg-gray-500 text-white"
+                                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                    }`}
+                                  >
+                                    {status === "na" ? "N/A" : status.charAt(0).toUpperCase()}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ) : test.requires_measurement ? (
                           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
                             {/* Reference/Baseline value for percentage tolerances */}
                             {needsBaseline && (
