@@ -233,12 +233,85 @@ export interface TimerLinearityBaseline {
   time_points: number[]; // e.g., [10, 30, 60, 120]
 }
 
+// Linac-specific baselines
+export interface OutputConstancyBaseline {
+  reference_output: number; // cGy/MU or reading value
+  measurement_date: string;
+  field_size?: string; // e.g., "10x10"
+  depth?: string; // e.g., "dmax" or "10cm"
+  ssd?: string; // e.g., "100cm"
+}
+
+export interface EnergyBaselinesMap {
+  [energy: string]: OutputConstancyBaseline; // keyed by energy like "6MV", "10MV", "6MeV"
+}
+
+export interface BeamSymmetryBaseline {
+  reference_flatness?: number; // percentage
+  reference_symmetry?: number; // percentage
+}
+
+// Cobalt-60 specific (similar to brachytherapy but with different parameters)
+export interface Cobalt60SourceBaseline {
+  initial_activity: number;
+  calibration_date: string;
+  unit: string; // typically Ci or TBq
+  half_life_days?: number; // 1925.2 days for Co-60
+}
+
+// CT Simulator baselines
+export interface CTHounsfieldBaseline {
+  water_hu: number; // should be ~0
+  air_hu: number; // should be ~-1000
+  noise_std: number; // standard deviation for water
+  uniformity_tolerance: number; // HU difference center vs periphery
+}
+
+// Gamma Knife baselines
+export interface GammaKnifeDoseRateBaseline {
+  dose_rate: number; // Gy/min
+  measurement_date: string;
+  collimator_size?: string; // e.g., "16mm", "8mm", "4mm"
+}
+
+export interface GammaKnifeOutputFactorBaseline {
+  output_factors: {
+    [collimator: string]: number; // e.g., {"16mm": 1.0, "8mm": 0.95, "4mm": 0.87}
+  };
+}
+
+// Kilovoltage baselines
+export interface KilovoltageOutputBaseline {
+  reference_output: number;
+  kvp: number;
+  ma: number;
+  cone_size?: string;
+  filter?: string;
+  measurement_date: string;
+}
+
+// MLC baselines
+export interface MLCBaseline {
+  leaf_transmission: number; // percentage
+  interleaf_leakage: number; // percentage
+  abutting_leaf_transmission?: number;
+}
+
 export type BaselineValues =
   | SourceDecayBaseline
   | PositionDeviationBaseline
   | DwellTimeBaseline
   | PercentageDifferenceBaseline
   | TimerLinearityBaseline
+  | OutputConstancyBaseline
+  | EnergyBaselinesMap
+  | BeamSymmetryBaseline
+  | Cobalt60SourceBaseline
+  | CTHounsfieldBaseline
+  | GammaKnifeDoseRateBaseline
+  | GammaKnifeOutputFactorBaseline
+  | KilovoltageOutputBaseline
+  | MLCBaseline
   | Record<string, unknown>;
 
 export interface EquipmentBaseline {

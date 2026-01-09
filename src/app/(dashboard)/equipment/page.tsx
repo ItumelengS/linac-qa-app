@@ -11,6 +11,11 @@ import {
   PositionDeviationBaseline,
   DwellTimeBaseline,
   TimerLinearityBaseline,
+  OutputConstancyBaseline,
+  Cobalt60SourceBaseline,
+  CTHounsfieldBaseline,
+  GammaKnifeDoseRateBaseline,
+  MLCBaseline,
 } from "@/types/database";
 
 const EQUIPMENT_TYPES: EquipmentType[] = [
@@ -31,6 +36,18 @@ const EQUIPMENT_TYPES: EquipmentType[] = [
   "record_verify",
 ];
 
+// Helper to determine equipment category for baseline UI
+function getEquipmentCategory(type: EquipmentType): string {
+  if (type === "brachytherapy_hdr" || type === "brachytherapy_ldr") return "brachytherapy";
+  if (type === "linac" || type === "bore_linac" || type === "linac_srs") return "linac";
+  if (type === "cobalt60") return "cobalt60";
+  if (type === "ct_simulator") return "ct_simulator";
+  if (type === "gamma_knife") return "gamma_knife";
+  if (type === "mlc") return "mlc";
+  if (type === "kilovoltage" || type === "kilovoltage_intraop") return "kilovoltage";
+  return "other";
+}
+
 // Baseline Settings Modal Component
 function BaselineSettingsModal({
   equipment,
@@ -43,7 +60,9 @@ function BaselineSettingsModal({
   const [saving, setSaving] = useState(false);
   const [baselines, setBaselines] = useState<Record<string, { values: BaselineValues; source_serial?: string }>>({});
 
-  // Source data for brachytherapy
+  const category = getEquipmentCategory(equipment.equipment_type);
+
+  // Brachytherapy source data
   const [sourceData, setSourceData] = useState<SourceDecayBaseline & { source_serial?: string }>({
     initial_activity: 0,
     calibration_date: "",
@@ -66,8 +85,44 @@ function BaselineSettingsModal({
     time_points: [10, 30, 60, 120],
   });
 
-  const isBrachytherapy = equipment.equipment_type === "brachytherapy_hdr" ||
-                          equipment.equipment_type === "brachytherapy_ldr";
+  // Linac output constancy per energy
+  const [linacOutputs, setLinacOutputs] = useState<Record<string, OutputConstancyBaseline>>({});
+
+  // Cobalt-60 source data
+  const [cobaltSource, setCobaltSource] = useState<Cobalt60SourceBaseline>({
+    initial_activity: 0,
+    calibration_date: "",
+    unit: "Ci",
+    half_life_days: 1925.2,
+  });
+
+  // CT Simulator HU baselines
+  const [ctBaselines, setCtBaselines] = useState<CTHounsfieldBaseline>({
+    water_hu: 0,
+    air_hu: -1000,
+    noise_std: 5,
+    uniformity_tolerance: 5,
+  });
+
+  // Gamma Knife dose rate
+  const [gammaKnifeData, setGammaKnifeData] = useState<GammaKnifeDoseRateBaseline>({
+    dose_rate: 0,
+    measurement_date: "",
+    collimator_size: "16mm",
+  });
+
+  // MLC baselines
+  const [mlcData, setMlcData] = useState<MLCBaseline>({
+    leaf_transmission: 0,
+    interleaf_leakage: 0,
+    abutting_leaf_transmission: 0,
+  });
+
+  // Get available energies from equipment
+  const allEnergies = [
+    ...(equipment.photon_energies || []),
+    ...(equipment.electron_energies || []),
+  ];
 
   // Fetch existing baselines
   useEffect(() => {
@@ -78,43 +133,100 @@ function BaselineSettingsModal({
           const data = await response.json();
           setBaselines(data.baselines || {});
 
-          // Pre-populate source data if exists (from DBR6 or any source decay test)
-          const sourceBaseline = data.baselines?.DBR6;
-          if (sourceBaseline?.values) {
-            const vals = sourceBaseline.values as SourceDecayBaseline;
-            setSourceData({
-              initial_activity: vals.initial_activity || 0,
-              calibration_date: vals.calibration_date || "",
-              unit: vals.unit || "Ci",
-              source_serial: sourceBaseline.source_serial || "",
-            });
+          // Pre-populate based on equipment type
+          if (category === "brachytherapy") {
+            const sourceBaseline = data.baselines?.DBR6;
+            if (sourceBaseline?.values) {
+              const vals = sourceBaseline.values as SourceDecayBaseline;
+              setSourceData({
+                initial_activity: vals.initial_activity || 0,
+                calibration_date: vals.calibration_date || "",
+                unit: vals.unit || "Ci",
+                source_serial: sourceBaseline.source_serial || "",
+              });
+            }
+
+            const positionBaseline = data.baselines?.DBR10;
+            if (positionBaseline?.values) {
+              const vals = positionBaseline.values as PositionDeviationBaseline;
+              setPositionData({ expected_position: vals.expected_position || 0 });
+            }
+
+            const dwellBaseline = data.baselines?.DBR11;
+            if (dwellBaseline?.values) {
+              const vals = dwellBaseline.values as DwellTimeBaseline;
+              setDwellTimeData({ set_time: vals.set_time || 60 });
+            }
+
+            const timerBaseline = data.baselines?.QBR7;
+            if (timerBaseline?.values) {
+              const vals = timerBaseline.values as TimerLinearityBaseline;
+              setTimerLinearityData({ time_points: vals.time_points || [10, 30, 60, 120] });
+            }
           }
 
-          // Pre-populate position data (DBR10 or similar)
-          const positionBaseline = data.baselines?.DBR10;
-          if (positionBaseline?.values) {
-            const vals = positionBaseline.values as PositionDeviationBaseline;
-            setPositionData({
-              expected_position: vals.expected_position || 0,
+          if (category === "linac") {
+            // Load output baselines per energy
+            const outputs: Record<string, OutputConstancyBaseline> = {};
+            allEnergies.forEach(energy => {
+              const baseline = data.baselines?.[`OUTPUT_${energy}`];
+              if (baseline?.values) {
+                outputs[energy] = baseline.values as OutputConstancyBaseline;
+              } else {
+                outputs[energy] = { reference_output: 0, measurement_date: "" };
+              }
             });
+            setLinacOutputs(outputs);
           }
 
-          // Pre-populate dwell time data (DBR11 or similar)
-          const dwellBaseline = data.baselines?.DBR11;
-          if (dwellBaseline?.values) {
-            const vals = dwellBaseline.values as DwellTimeBaseline;
-            setDwellTimeData({
-              set_time: vals.set_time || 60,
-            });
+          if (category === "cobalt60") {
+            const sourceBaseline = data.baselines?.MCO16;
+            if (sourceBaseline?.values) {
+              const vals = sourceBaseline.values as Cobalt60SourceBaseline;
+              setCobaltSource({
+                initial_activity: vals.initial_activity || 0,
+                calibration_date: vals.calibration_date || "",
+                unit: vals.unit || "Ci",
+                half_life_days: vals.half_life_days || 1925.2,
+              });
+            }
           }
 
-          // Pre-populate timer linearity data (QBR7)
-          const timerBaseline = data.baselines?.QBR7;
-          if (timerBaseline?.values) {
-            const vals = timerBaseline.values as TimerLinearityBaseline;
-            setTimerLinearityData({
-              time_points: vals.time_points || [10, 30, 60, 120],
-            });
+          if (category === "ct_simulator") {
+            const ctBaseline = data.baselines?.DCS2;
+            if (ctBaseline?.values) {
+              const vals = ctBaseline.values as CTHounsfieldBaseline;
+              setCtBaselines({
+                water_hu: vals.water_hu ?? 0,
+                air_hu: vals.air_hu ?? -1000,
+                noise_std: vals.noise_std ?? 5,
+                uniformity_tolerance: vals.uniformity_tolerance ?? 5,
+              });
+            }
+          }
+
+          if (category === "gamma_knife") {
+            const gkBaseline = data.baselines?.MSG7;
+            if (gkBaseline?.values) {
+              const vals = gkBaseline.values as GammaKnifeDoseRateBaseline;
+              setGammaKnifeData({
+                dose_rate: vals.dose_rate || 0,
+                measurement_date: vals.measurement_date || "",
+                collimator_size: vals.collimator_size || "16mm",
+              });
+            }
+          }
+
+          if (category === "mlc") {
+            const mlcBaseline = data.baselines?.AM1;
+            if (mlcBaseline?.values) {
+              const vals = mlcBaseline.values as MLCBaseline;
+              setMlcData({
+                leaf_transmission: vals.leaf_transmission || 0,
+                interleaf_leakage: vals.interleaf_leakage || 0,
+                abutting_leaf_transmission: vals.abutting_leaf_transmission || 0,
+              });
+            }
           }
         }
       } catch (err) {
@@ -125,117 +237,74 @@ function BaselineSettingsModal({
     };
 
     fetchBaselines();
-  }, [equipment.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equipment.id, category]);
+
+  const saveBaseline = async (testId: string, values: BaselineValues, sourceSerial?: string) => {
+    return fetch(`/api/equipment/${equipment.id}/baselines`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ test_id: testId, values, source_serial: sourceSerial }),
+    });
+  };
 
   const handleSaveAllBaselines = async () => {
     setSaving(true);
     try {
       const savePromises: Promise<Response>[] = [];
 
-      if (isBrachytherapy) {
-        // Save source data
+      if (category === "brachytherapy") {
         if (sourceData.initial_activity && sourceData.calibration_date) {
           const { source_serial, ...values } = sourceData;
-          savePromises.push(
-            fetch(`/api/equipment/${equipment.id}/baselines`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                test_id: "DBR6",
-                values,
-                source_serial: source_serial || undefined,
-              }),
-            })
-          );
-
-          // Also save reference value for QBR4
-          savePromises.push(
-            fetch(`/api/equipment/${equipment.id}/baselines`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                test_id: "QBR4",
-                values: { reference_value: sourceData.initial_activity },
-                source_serial: source_serial || undefined,
-              }),
-            })
-          );
+          savePromises.push(saveBaseline("DBR6", values, source_serial));
+          savePromises.push(saveBaseline("QBR4", { reference_value: sourceData.initial_activity }, source_serial));
         }
 
-        // Save position deviation data
         if (positionData.expected_position) {
-          savePromises.push(
-            fetch(`/api/equipment/${equipment.id}/baselines`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                test_id: "DBR10",
-                values: positionData,
-              }),
-            })
-          );
-          // Also save for QBR5 (quarterly position check)
-          savePromises.push(
-            fetch(`/api/equipment/${equipment.id}/baselines`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                test_id: "QBR5",
-                values: positionData,
-              }),
-            })
-          );
-          // Also save for ABR2 (annual position check)
-          savePromises.push(
-            fetch(`/api/equipment/${equipment.id}/baselines`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                test_id: "ABR2",
-                values: positionData,
-              }),
-            })
-          );
+          savePromises.push(saveBaseline("DBR10", positionData));
+          savePromises.push(saveBaseline("QBR5", positionData));
+          savePromises.push(saveBaseline("ABR2", positionData));
         }
 
-        // Save dwell time data
         if (dwellTimeData.set_time) {
-          savePromises.push(
-            fetch(`/api/equipment/${equipment.id}/baselines`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                test_id: "DBR11",
-                values: dwellTimeData,
-              }),
-            })
-          );
-          // Also save for QBR6 (quarterly timer check)
-          savePromises.push(
-            fetch(`/api/equipment/${equipment.id}/baselines`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                test_id: "QBR6",
-                values: dwellTimeData,
-              }),
-            })
-          );
+          savePromises.push(saveBaseline("DBR11", dwellTimeData));
+          savePromises.push(saveBaseline("QBR6", dwellTimeData));
         }
 
-        // Save timer linearity data
         if (timerLinearityData.time_points.length > 0) {
-          savePromises.push(
-            fetch(`/api/equipment/${equipment.id}/baselines`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                test_id: "QBR7",
-                values: timerLinearityData,
-              }),
-            })
-          );
+          savePromises.push(saveBaseline("QBR7", timerLinearityData));
         }
+      }
+
+      if (category === "linac") {
+        for (const energy of allEnergies) {
+          const output = linacOutputs[energy];
+          if (output?.reference_output) {
+            savePromises.push(saveBaseline(`OUTPUT_${energy}`, output));
+          }
+        }
+      }
+
+      if (category === "cobalt60") {
+        if (cobaltSource.initial_activity && cobaltSource.calibration_date) {
+          savePromises.push(saveBaseline("MCO16", cobaltSource));
+        }
+      }
+
+      if (category === "ct_simulator") {
+        savePromises.push(saveBaseline("DCS2", ctBaselines));
+        savePromises.push(saveBaseline("DCS3", { noise_std: ctBaselines.noise_std }));
+        savePromises.push(saveBaseline("DCS4", { uniformity_tolerance: ctBaselines.uniformity_tolerance }));
+      }
+
+      if (category === "gamma_knife") {
+        if (gammaKnifeData.dose_rate) {
+          savePromises.push(saveBaseline("MSG7", gammaKnifeData));
+        }
+      }
+
+      if (category === "mlc") {
+        savePromises.push(saveBaseline("AM1", mlcData));
       }
 
       await Promise.all(savePromises);
@@ -254,9 +323,7 @@ function BaselineSettingsModal({
   };
 
   const addTimePoint = () => {
-    setTimerLinearityData(prev => ({
-      time_points: [...prev.time_points, 0],
-    }));
+    setTimerLinearityData(prev => ({ time_points: [...prev.time_points, 0] }));
   };
 
   const removeTimePoint = (index: number) => {
@@ -265,18 +332,481 @@ function BaselineSettingsModal({
     }));
   };
 
+  const renderBrachytherapyForm = () => (
+    <div className="space-y-8">
+      {/* Source Data Section */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Source Data (Ir-192)</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Enter the source calibration data. When you replace a source, the old baseline will be preserved for history.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Source Serial Number</label>
+            <input
+              type="text"
+              value={sourceData.source_serial || ""}
+              onChange={(e) => setSourceData(prev => ({ ...prev, source_serial: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., IR192-2024-001"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Initial Activity</label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step="0.01"
+                value={sourceData.initial_activity || ""}
+                onChange={(e) => setSourceData(prev => ({ ...prev, initial_activity: parseFloat(e.target.value) || 0 }))}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., 10.5"
+              />
+              <select
+                value={sourceData.unit}
+                onChange={(e) => setSourceData(prev => ({ ...prev, unit: e.target.value }))}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="Ci">Ci</option>
+                <option value="GBq">GBq</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Calibration Date</label>
+            <input
+              type="date"
+              value={sourceData.calibration_date}
+              onChange={(e) => setSourceData(prev => ({ ...prev, calibration_date: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+        </div>
+
+        {sourceData.initial_activity > 0 && sourceData.calibration_date && (
+          <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mt-4">
+            <p className="text-sm text-amber-800">
+              <strong>Expected today:</strong>{" "}
+              {(() => {
+                const halfLife = 73.83;
+                const decayConstant = Math.LN2 / halfLife;
+                const calDate = new Date(sourceData.calibration_date);
+                const today = new Date();
+                const daysElapsed = (today.getTime() - calDate.getTime()) / (1000 * 60 * 60 * 24);
+                const expected = sourceData.initial_activity * Math.exp(-decayConstant * daysElapsed);
+                return `${expected.toFixed(3)} ${sourceData.unit} (${Math.round(daysElapsed)} days elapsed)`;
+              })()}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Position Deviation */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Position Deviation Defaults</h3>
+        <p className="text-sm text-gray-500 mb-4">Default expected position for source position verification tests.</p>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Expected Position (mm)</label>
+          <input
+            type="number"
+            step="0.1"
+            value={positionData.expected_position || ""}
+            onChange={(e) => setPositionData({ expected_position: parseFloat(e.target.value) || 0 })}
+            className="w-48 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder="e.g., 100.0"
+          />
+        </div>
+      </div>
+
+      {/* Dwell Time */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Dwell Time Defaults</h3>
+        <p className="text-sm text-gray-500 mb-4">Default set time for dwell time accuracy tests.</p>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Set Time (seconds)</label>
+          <input
+            type="number"
+            step="0.1"
+            value={dwellTimeData.set_time || ""}
+            onChange={(e) => setDwellTimeData({ set_time: parseFloat(e.target.value) || 0 })}
+            className="w-48 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder="e.g., 60.0"
+          />
+        </div>
+      </div>
+
+      {/* Timer Linearity */}
+      <div>
+        <h3 className="font-medium text-gray-900 mb-1">Timer Linearity Test Points</h3>
+        <p className="text-sm text-gray-500 mb-4">Time points (seconds) for timer linearity testing.</p>
+        <div className="space-y-2">
+          {timerLinearityData.time_points.map((point, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <input
+                type="number"
+                step="1"
+                value={point || ""}
+                onChange={(e) => handleTimePointChange(index, e.target.value)}
+                className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <span className="text-sm text-gray-500">seconds</span>
+              {timerLinearityData.time_points.length > 2 && (
+                <button type="button" onClick={() => removeTimePoint(index)} className="text-red-500 hover:text-red-700 p-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          ))}
+          <button type="button" onClick={addTimePoint} className="text-sm text-primary hover:text-primary/80 flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Time Point
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderLinacForm = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-medium text-gray-900 mb-1">Output Constancy Reference Values</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Set reference output values for each beam energy. These are used for daily output constancy checks.
+        </p>
+
+        {allEnergies.length === 0 ? (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <p className="text-sm text-yellow-800">
+              No energies configured for this equipment. Please edit the equipment to add photon and/or electron energies first.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {allEnergies.map(energy => (
+              <div key={energy} className="border rounded-md p-4">
+                <h4 className="font-medium text-gray-800 mb-3">{energy}</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Reference Output</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={linacOutputs[energy]?.reference_output || ""}
+                      onChange={(e) => setLinacOutputs(prev => ({
+                        ...prev,
+                        [energy]: { ...prev[energy], reference_output: parseFloat(e.target.value) || 0 }
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="e.g., 1.000"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">cGy/MU or reading</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Measurement Date</label>
+                    <input
+                      type="date"
+                      value={linacOutputs[energy]?.measurement_date || ""}
+                      onChange={(e) => setLinacOutputs(prev => ({
+                        ...prev,
+                        [energy]: { ...prev[energy], measurement_date: e.target.value }
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Field Size</label>
+                    <input
+                      type="text"
+                      value={linacOutputs[energy]?.field_size || ""}
+                      onChange={(e) => setLinacOutputs(prev => ({
+                        ...prev,
+                        [energy]: { ...prev[energy], field_size: e.target.value }
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="e.g., 10x10"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderCobalt60Form = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-medium text-gray-900 mb-1">Source Data (Co-60)</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Enter the Cobalt-60 source calibration data for output constancy tracking.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Initial Activity</label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step="0.01"
+                value={cobaltSource.initial_activity || ""}
+                onChange={(e) => setCobaltSource(prev => ({ ...prev, initial_activity: parseFloat(e.target.value) || 0 }))}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., 5000"
+              />
+              <select
+                value={cobaltSource.unit}
+                onChange={(e) => setCobaltSource(prev => ({ ...prev, unit: e.target.value }))}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="Ci">Ci</option>
+                <option value="TBq">TBq</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Calibration Date</label>
+            <input
+              type="date"
+              value={cobaltSource.calibration_date}
+              onChange={(e) => setCobaltSource(prev => ({ ...prev, calibration_date: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+        </div>
+
+        {cobaltSource.initial_activity > 0 && cobaltSource.calibration_date && (
+          <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mt-4">
+            <p className="text-sm text-amber-800">
+              <strong>Expected today:</strong>{" "}
+              {(() => {
+                const halfLife = cobaltSource.half_life_days || 1925.2;
+                const decayConstant = Math.LN2 / halfLife;
+                const calDate = new Date(cobaltSource.calibration_date);
+                const today = new Date();
+                const daysElapsed = (today.getTime() - calDate.getTime()) / (1000 * 60 * 60 * 24);
+                const expected = cobaltSource.initial_activity * Math.exp(-decayConstant * daysElapsed);
+                return `${expected.toFixed(2)} ${cobaltSource.unit} (${Math.round(daysElapsed)} days elapsed, half-life: ${halfLife} days)`;
+              })()}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderCTSimulatorForm = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-medium text-gray-900 mb-1">CT Number (HU) Baselines</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Reference values for daily CT number accuracy and noise checks.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Water HU (expected: 0)</label>
+            <input
+              type="number"
+              step="1"
+              value={ctBaselines.water_hu}
+              onChange={(e) => setCtBaselines(prev => ({ ...prev, water_hu: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="0"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Air HU (expected: -1000)</label>
+            <input
+              type="number"
+              step="1"
+              value={ctBaselines.air_hu}
+              onChange={(e) => setCtBaselines(prev => ({ ...prev, air_hu: parseFloat(e.target.value) || -1000 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="-1000"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Noise Std Dev (HU)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={ctBaselines.noise_std}
+              onChange={(e) => setCtBaselines(prev => ({ ...prev, noise_std: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="5"
+            />
+            <p className="text-xs text-gray-500 mt-1">Tolerance: &lt;5 HU (action: &lt;10 HU)</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Uniformity Tolerance (HU)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={ctBaselines.uniformity_tolerance}
+              onChange={(e) => setCtBaselines(prev => ({ ...prev, uniformity_tolerance: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="5"
+            />
+            <p className="text-xs text-gray-500 mt-1">Tolerance: &lt;5 HU (action: &lt;10 HU)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderGammaKnifeForm = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-medium text-gray-900 mb-1">Dose Rate Baseline</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Reference dose rate for monthly output checks.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dose Rate (Gy/min)</label>
+            <input
+              type="number"
+              step="0.001"
+              value={gammaKnifeData.dose_rate || ""}
+              onChange={(e) => setGammaKnifeData(prev => ({ ...prev, dose_rate: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 3.5"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Measurement Date</label>
+            <input
+              type="date"
+              value={gammaKnifeData.measurement_date}
+              onChange={(e) => setGammaKnifeData(prev => ({ ...prev, measurement_date: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Collimator Size</label>
+            <select
+              value={gammaKnifeData.collimator_size}
+              onChange={(e) => setGammaKnifeData(prev => ({ ...prev, collimator_size: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="16mm">16mm</option>
+              <option value="8mm">8mm</option>
+              <option value="4mm">4mm</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderMLCForm = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-medium text-gray-900 mb-1">MLC Transmission Baselines</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Reference values for annual MLC transmission measurements.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Leaf Transmission (%)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={mlcData.leaf_transmission || ""}
+              onChange={(e) => setMlcData(prev => ({ ...prev, leaf_transmission: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 1.5"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Interleaf Leakage (%)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={mlcData.interleaf_leakage || ""}
+              onChange={(e) => setMlcData(prev => ({ ...prev, interleaf_leakage: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 2.0"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Abutting Leaf Transmission (%)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={mlcData.abutting_leaf_transmission || ""}
+              onChange={(e) => setMlcData(prev => ({ ...prev, abutting_leaf_transmission: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 20.0"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderFormContent = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      );
+    }
+
+    switch (category) {
+      case "brachytherapy":
+        return renderBrachytherapyForm();
+      case "linac":
+        return renderLinacForm();
+      case "cobalt60":
+        return renderCobalt60Form();
+      case "ct_simulator":
+        return renderCTSimulatorForm();
+      case "gamma_knife":
+        return renderGammaKnifeForm();
+      case "mlc":
+        return renderMLCForm();
+      default:
+        return (
+          <div className="text-center py-8 text-gray-500">
+            <p>Baseline settings are not yet available for this equipment type.</p>
+            <p className="text-sm mt-2">Supported: Linacs, Brachytherapy, Cobalt-60, CT Simulator, Gamma Knife, MLC</p>
+          </div>
+        );
+    }
+  };
+
+  const hasBaselines = category !== "other" && category !== "kilovoltage";
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div className="px-6 py-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
           <div>
             <h2 className="text-lg font-semibold">Equipment Baseline Settings</h2>
-            <p className="text-sm text-gray-500">{equipment.name}</p>
+            <p className="text-sm text-gray-500">{equipment.name} - {EQUIPMENT_TYPE_LABELS[equipment.equipment_type]}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -284,196 +814,7 @@ function BaselineSettingsModal({
         </div>
 
         <div className="p-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : isBrachytherapy ? (
-            <div className="space-y-8">
-              {/* Source Data Section */}
-              <div className="border-b pb-6">
-                <h3 className="font-medium text-gray-900 mb-1">Source Data (Ir-192)</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Enter the source calibration data. When you replace a source, the old baseline will be preserved for history.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Source Serial Number
-                    </label>
-                    <input
-                      type="text"
-                      value={sourceData.source_serial || ""}
-                      onChange={(e) => setSourceData(prev => ({
-                        ...prev,
-                        source_serial: e.target.value
-                      }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="e.g., IR192-2024-001"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Initial Activity
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={sourceData.initial_activity || ""}
-                        onChange={(e) => setSourceData(prev => ({
-                          ...prev,
-                          initial_activity: parseFloat(e.target.value) || 0
-                        }))}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="e.g., 10.5"
-                      />
-                      <select
-                        value={sourceData.unit}
-                        onChange={(e) => setSourceData(prev => ({ ...prev, unit: e.target.value }))}
-                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        <option value="Ci">Ci</option>
-                        <option value="GBq">GBq</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Calibration Date
-                    </label>
-                    <input
-                      type="date"
-                      value={sourceData.calibration_date}
-                      onChange={(e) => setSourceData(prev => ({
-                        ...prev,
-                        calibration_date: e.target.value
-                      }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
-                </div>
-
-                {sourceData.initial_activity > 0 && sourceData.calibration_date && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mt-4">
-                    <p className="text-sm text-amber-800">
-                      <strong>Expected today:</strong>{" "}
-                      {(() => {
-                        const halfLife = 73.83;
-                        const decayConstant = Math.LN2 / halfLife;
-                        const calDate = new Date(sourceData.calibration_date);
-                        const today = new Date();
-                        const daysElapsed = (today.getTime() - calDate.getTime()) / (1000 * 60 * 60 * 24);
-                        const expected = sourceData.initial_activity * Math.exp(-decayConstant * daysElapsed);
-                        return `${expected.toFixed(3)} ${sourceData.unit} (${Math.round(daysElapsed)} days elapsed)`;
-                      })()}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Position Deviation Defaults */}
-              <div className="border-b pb-6">
-                <h3 className="font-medium text-gray-900 mb-1">Position Deviation Defaults</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Default expected position for source position verification tests (DBR10, QBR5, ABR2).
-                </p>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Expected Position (mm)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={positionData.expected_position || ""}
-                    onChange={(e) => setPositionData({
-                      expected_position: parseFloat(e.target.value) || 0
-                    })}
-                    className="w-48 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="e.g., 100.0"
-                  />
-                </div>
-              </div>
-
-              {/* Dwell Time Defaults */}
-              <div className="border-b pb-6">
-                <h3 className="font-medium text-gray-900 mb-1">Dwell Time Defaults</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Default set time for dwell time accuracy tests (DBR11, QBR6).
-                </p>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Set Time (seconds)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={dwellTimeData.set_time || ""}
-                    onChange={(e) => setDwellTimeData({
-                      set_time: parseFloat(e.target.value) || 0
-                    })}
-                    className="w-48 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="e.g., 60.0"
-                  />
-                </div>
-              </div>
-
-              {/* Timer Linearity Defaults */}
-              <div>
-                <h3 className="font-medium text-gray-900 mb-1">Timer Linearity Test Points</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Time points (in seconds) for timer linearity testing (QBR7).
-                </p>
-
-                <div className="space-y-2">
-                  {timerLinearityData.time_points.map((point, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={point || ""}
-                        onChange={(e) => handleTimePointChange(index, e.target.value)}
-                        className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="seconds"
-                      />
-                      <span className="text-sm text-gray-500">seconds</span>
-                      {timerLinearityData.time_points.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() => removeTimePoint(index)}
-                          className="text-red-500 hover:text-red-700 p-1"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={addTimePoint}
-                    className="text-sm text-primary hover:text-primary/80 flex items-center gap-1"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add Time Point
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <p>Baseline settings are currently available for brachytherapy equipment.</p>
-              <p className="text-sm mt-2">More equipment types coming soon.</p>
-            </div>
-          )}
+          {renderFormContent()}
         </div>
 
         <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 sticky bottom-0">
@@ -483,7 +824,7 @@ function BaselineSettingsModal({
           >
             Cancel
           </button>
-          {isBrachytherapy && (
+          {hasBaselines && (
             <button
               onClick={handleSaveAllBaselines}
               disabled={saving}

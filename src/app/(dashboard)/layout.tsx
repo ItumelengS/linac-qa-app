@@ -2,6 +2,9 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 
+// Prevent static prerendering - requires Clerk auth at runtime
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {
