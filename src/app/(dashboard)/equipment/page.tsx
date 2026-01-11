@@ -48,6 +48,233 @@ function getEquipmentCategory(type: EquipmentType): string {
   return "other";
 }
 
+// Edit Equipment Modal Component
+function EditEquipmentModal({
+  equipment,
+  onClose,
+  onSave,
+}: {
+  equipment: Equipment;
+  onClose: () => void;
+  onSave: (updated: Equipment) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    name: equipment.name,
+    equipment_type: equipment.equipment_type,
+    manufacturer: equipment.manufacturer || "",
+    model: equipment.model || "",
+    serial_number: equipment.serial_number || "",
+    location: equipment.location || "",
+    room_number: equipment.room_number || "",
+    photon_energies: equipment.photon_energies || [],
+    electron_energies: equipment.electron_energies || [],
+  });
+
+  const handleEnergyChange = (
+    type: "photon_energies" | "electron_energies",
+    value: string
+  ) => {
+    const energies = value.split(",").map((e) => e.trim()).filter(Boolean);
+    setFormData((prev) => ({ ...prev, [type]: energies }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+
+    try {
+      const response = await fetch(`/api/equipment/${equipment.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update equipment");
+      }
+
+      onSave(data.equipment);
+      onClose();
+    } catch (err) {
+      console.error("Error updating equipment:", err);
+      setError(err instanceof Error ? err.message : "Failed to update equipment");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+          <div>
+            <h2 className="text-lg font-semibold">Edit Equipment</h2>
+            <p className="text-sm text-gray-500">Update equipment details</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Equipment Name *
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., Linac 1, TrueBeam A"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Equipment Type *
+              </label>
+              <select
+                value={formData.equipment_type}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    equipment_type: e.target.value as EquipmentType,
+                  }))
+                }
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {EQUIPMENT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {EQUIPMENT_TYPE_LABELS[type]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Manufacturer
+              </label>
+              <input
+                type="text"
+                value={formData.manufacturer}
+                onChange={(e) => setFormData((prev) => ({ ...prev, manufacturer: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., Varian, Elekta"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Model
+              </label>
+              <input
+                type="text"
+                value={formData.model}
+                onChange={(e) => setFormData((prev) => ({ ...prev, model: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., TrueBeam, VersaHD"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Serial Number
+              </label>
+              <input
+                type="text"
+                value={formData.serial_number}
+                onChange={(e) => setFormData((prev) => ({ ...prev, serial_number: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Location / Room
+              </label>
+              <input
+                type="text"
+                value={formData.location}
+                onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="e.g., Bunker 1, Room A"
+              />
+            </div>
+          </div>
+
+          {/* Energy fields for linacs */}
+          {["linac", "bore_linac", "linac_srs"].includes(formData.equipment_type) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Photon Energies
+                </label>
+                <input
+                  type="text"
+                  value={formData.photon_energies.join(", ")}
+                  onChange={(e) => handleEnergyChange("photon_energies", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="e.g., 6MV, 10MV, 15MV"
+                />
+                <p className="text-xs text-gray-500 mt-1">Comma-separated values</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Electron Energies
+                </label>
+                <input
+                  type="text"
+                  value={formData.electron_energies.join(", ")}
+                  onChange={(e) => handleEnergyChange("electron_energies", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="e.g., 6MeV, 9MeV, 12MeV"
+                />
+                <p className="text-xs text-gray-500 mt-1">Comma-separated values</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // Baseline Settings Modal Component
 function BaselineSettingsModal({
   equipment,
@@ -843,6 +1070,7 @@ export default function EquipmentPage() {
   const { isLoaded } = useUser();
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
+  const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -891,6 +1119,12 @@ export default function EquipmentPage() {
   ) => {
     const energies = value.split(",").map((e) => e.trim()).filter(Boolean);
     setFormData((prev) => ({ ...prev, [type]: energies }));
+  };
+
+  const handleEquipmentUpdated = (updated: Equipment) => {
+    setEquipment((prev) =>
+      prev.map((item) => (item.id === updated.id ? updated : item))
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1186,16 +1420,27 @@ export default function EquipmentPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <button
-                      onClick={() => setSelectedEquipment(item)}
-                      className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
-                      title="Settings"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => setEditingEquipment(item)}
+                        className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
+                        title="Edit"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setSelectedEquipment(item)}
+                        className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
+                        title="Baseline Settings"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1224,7 +1469,16 @@ export default function EquipmentPage() {
         </div>
       )}
 
-      {/* Settings Modal */}
+      {/* Edit Equipment Modal */}
+      {editingEquipment && (
+        <EditEquipmentModal
+          equipment={editingEquipment}
+          onClose={() => setEditingEquipment(null)}
+          onSave={handleEquipmentUpdated}
+        />
+      )}
+
+      {/* Baseline Settings Modal */}
       {selectedEquipment && (
         <BaselineSettingsModal
           equipment={selectedEquipment}
