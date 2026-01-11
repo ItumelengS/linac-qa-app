@@ -267,6 +267,12 @@ export interface CTHounsfieldBaseline {
   uniformity_tolerance: number; // HU difference center vs periphery
 }
 
+// CT Simulator dosimetry baselines (for biennial tests)
+export interface CTDosimetryBaseline {
+  ctdi_vol_reference: number; // Reference CTDIvol in mGy
+  ctdi_vol_4dct_reference?: number; // Reference CTDIvol for 4D-CT in mGy
+}
+
 // Gamma Knife baselines
 export interface GammaKnifeDoseRateBaseline {
   dose_rate: number; // Gy/min
@@ -308,6 +314,7 @@ export type BaselineValues =
   | BeamSymmetryBaseline
   | Cobalt60SourceBaseline
   | CTHounsfieldBaseline
+  | CTDosimetryBaseline
   | GammaKnifeDoseRateBaseline
   | GammaKnifeOutputFactorBaseline
   | KilovoltageOutputBaseline

@@ -25,12 +25,37 @@ interface TestResult {
   notes?: string;
 }
 
-// Parse tolerance string to get numeric value and type
-function parseTolerance(tolerance: string | null | undefined): { value: number; isPercent: boolean } | null {
+// Parse tolerance string to get numeric value, type, and expected value
+function parseTolerance(tolerance: string | null | undefined): {
+  value: number;
+  isPercent: boolean;
+  expectedValue?: number;
+  isMaxThreshold?: boolean;
+} | null {
   if (!tolerance) return null;
 
-  // Match patterns like "±3%", "±1mm", "±0.5s", "±2mm"
-  const match = tolerance.match(/[±]?\s*(\d+\.?\d*)\s*(%|mm|s|U|µSv\/h)?/i);
+  // Handle "X ± Y unit" format (e.g., "0 ± 3 HU" for CT number accuracy)
+  const rangeMatch = tolerance.match(/(-?\d+\.?\d*)\s*±\s*(\d+\.?\d*)\s*(\w+)?/);
+  if (rangeMatch) {
+    return {
+      expectedValue: parseFloat(rangeMatch[1]),
+      value: parseFloat(rangeMatch[2]),
+      isPercent: false,
+    };
+  }
+
+  // Handle max threshold format (e.g., "5 HU", "10%") - value should be less than this
+  const thresholdMatch = tolerance.match(/^(\d+\.?\d*)\s*(%|HU|mm|°|lp\/cm|RED)?$/i);
+  if (thresholdMatch) {
+    return {
+      value: parseFloat(thresholdMatch[1]),
+      isPercent: thresholdMatch[2] === '%',
+      isMaxThreshold: true,
+    };
+  }
+
+  // Match patterns like "±3%", "±1mm", "±0.5s"
+  const match = tolerance.match(/[±]?\s*(\d+\.?\d*)\s*(%|mm|s|U|µSv\/h|°)?/i);
   if (!match) return null;
 
   const value = parseFloat(match[1]);
@@ -59,6 +84,7 @@ function calculateStatus(
 
   let deviation: number;
   let deviationDisplay: string;
+  let absDeviation: number;
 
   if (tol.isPercent) {
     // For percentage tolerance, we need a baseline
@@ -66,14 +92,55 @@ function calculateStatus(
       return { status: "", deviation: undefined, message: "Enter reference value" };
     }
     deviation = ((measurement - baseline) / baseline) * 100;
+    absDeviation = Math.abs(deviation);
     deviationDisplay = `${deviation >= 0 ? '+' : ''}${deviation.toFixed(2)}%`;
-  } else {
-    // For absolute tolerance, measurement IS the deviation from expected
+  } else if (tol.isMaxThreshold) {
+    // For max threshold (e.g., "5 HU" for noise), measurement should be <= threshold
     deviation = measurement;
-    deviationDisplay = `${deviation >= 0 ? '+' : ''}${deviation.toFixed(2)}`;
-  }
+    absDeviation = Math.abs(measurement);
+    deviationDisplay = `${measurement.toFixed(2)}`;
 
-  const absDeviation = Math.abs(deviation);
+    // For max thresholds, pass if measurement <= tolerance
+    if (absDeviation <= tol.value) {
+      return {
+        status: "pass",
+        deviation,
+        message: `${deviationDisplay} (within ${tol.value} limit)`
+      };
+    }
+
+    if (action && absDeviation <= action.value) {
+      return {
+        status: "pass",
+        deviation,
+        message: `${deviationDisplay} (within action level, investigate)`
+      };
+    }
+
+    return {
+      status: "fail",
+      deviation,
+      message: `${deviationDisplay} (exceeds ${action?.value || tol.value} limit)`
+    };
+  } else if (tol.expectedValue !== undefined) {
+    // For "X ± Y" format (e.g., "0 ± 3 HU"), use expectedValue from tolerance
+    const expected = baseline !== undefined ? baseline : tol.expectedValue;
+    deviation = measurement - expected;
+    absDeviation = Math.abs(deviation);
+    deviationDisplay = `${deviation >= 0 ? '+' : ''}${deviation.toFixed(2)}`;
+  } else {
+    // For absolute tolerance with baseline, calculate deviation from baseline
+    if (baseline !== undefined) {
+      deviation = measurement - baseline;
+      absDeviation = Math.abs(deviation);
+      deviationDisplay = `${deviation >= 0 ? '+' : ''}${deviation.toFixed(2)}`;
+    } else {
+      // No baseline - measurement IS the deviation from expected (0)
+      deviation = measurement;
+      absDeviation = Math.abs(measurement);
+      deviationDisplay = `${deviation >= 0 ? '+' : ''}${deviation.toFixed(2)}`;
+    }
+  }
 
   // Check against tolerance and action level
   if (absDeviation <= tol.value) {
@@ -156,13 +223,86 @@ function QAFormContent() {
       });
       setResults(initialResults);
 
-      // Fetch baselines for this equipment
+      // Fetch baselines for this equipment and pre-populate results
       if (data.equipment?.id) {
         try {
           const baselineResponse = await fetch(`/api/equipment/${data.equipment.id}/baselines`);
           if (baselineResponse.ok) {
             const baselineData = await baselineResponse.json();
-            setBaselines(baselineData.baselines || {});
+            const fetchedBaselines = baselineData.baselines || {};
+            setBaselines(fetchedBaselines);
+
+            // Pre-populate baseline values for tests that have them
+            const updatedResults = { ...initialResults };
+            data.tests?.forEach((test: QATestDefinition) => {
+              const testBaseline = fetchedBaselines[test.test_id];
+              if (testBaseline?.values) {
+                const values = testBaseline.values;
+                let baselineValue: number | undefined;
+
+                // Map CT simulator baseline values to specific tests
+                if (equipmentType === 'ct_simulator') {
+                  // Daily HU tests
+                  if (test.test_id === 'DCS2' && values.water_hu !== undefined) {
+                    baselineValue = values.water_hu;
+                  } else if (test.test_id === 'DCS3' && values.noise_std !== undefined) {
+                    baselineValue = values.noise_std;
+                  } else if (test.test_id === 'DCS4' && values.uniformity_tolerance !== undefined) {
+                    baselineValue = values.uniformity_tolerance;
+                  }
+                  // Biennial CTDIvol tests
+                  else if (test.test_id === 'BECS2' && values.ctdi_vol_reference !== undefined) {
+                    baselineValue = values.ctdi_vol_reference;
+                  } else if (test.test_id === 'BECS3' && values.ctdi_vol_4dct_reference !== undefined) {
+                    baselineValue = values.ctdi_vol_4dct_reference;
+                  }
+                }
+
+                // Map Cobalt-60 baseline values
+                if (equipmentType === 'cobalt60') {
+                  if (values.initial_activity !== undefined) {
+                    baselineValue = values.initial_activity;
+                  }
+                }
+
+                // Map Gamma Knife baseline values
+                if (equipmentType === 'gamma_knife') {
+                  if (values.dose_rate !== undefined) {
+                    baselineValue = values.dose_rate;
+                  }
+                }
+
+                // Map MLC baseline values
+                if (equipmentType === 'mlc') {
+                  if (test.test_id.includes('TRANSMISSION') && values.leaf_transmission !== undefined) {
+                    baselineValue = values.leaf_transmission;
+                  } else if (test.test_id.includes('LEAKAGE') && values.interleaf_leakage !== undefined) {
+                    baselineValue = values.interleaf_leakage;
+                  }
+                }
+
+                // Generic baseline value extraction (works for linacs, brachytherapy, etc.)
+                if (baselineValue === undefined) {
+                  if (values.reference_value !== undefined) {
+                    baselineValue = values.reference_value;
+                  } else if (values.reference_output !== undefined) {
+                    baselineValue = values.reference_output;
+                  } else if (values.expected_position !== undefined) {
+                    baselineValue = values.expected_position;
+                  } else if (values.set_time !== undefined) {
+                    baselineValue = values.set_time;
+                  }
+                }
+
+                if (baselineValue !== undefined) {
+                  updatedResults[test.test_id] = {
+                    ...updatedResults[test.test_id],
+                    baseline_value: baselineValue,
+                  };
+                }
+              }
+            });
+            setResults(updatedResults);
           }
         } catch (err) {
           console.error("Error fetching baselines:", err);
@@ -274,6 +414,88 @@ function QAFormContent() {
     }
   };
 
+  // Handler for saving a single test's measurement as baseline
+  const [savingBaselineFor, setSavingBaselineFor] = useState<string | null>(null);
+
+  const handleSaveSingleBaseline = async (test: QATestDefinition) => {
+    if (!equipment) return;
+
+    const result = results[test.test_id];
+    if (result?.measurement === undefined) return;
+
+    setSavingBaselineFor(test.test_id);
+
+    try {
+      let values: BaselineValues = {};
+
+      // Build values based on equipment type and test
+      if (equipmentType === 'ct_simulator') {
+        // Daily HU tests
+        if (test.test_id === 'DCS2') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, water_hu: result.measurement };
+        } else if (test.test_id === 'DCS3') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, noise_std: result.measurement };
+        } else if (test.test_id === 'DCS4') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, uniformity_tolerance: result.measurement };
+        }
+        // Biennial CTDIvol tests
+        else if (test.test_id === 'BECS2') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, ctdi_vol_reference: result.measurement };
+        } else if (test.test_id === 'BECS3') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, ctdi_vol_4dct_reference: result.measurement };
+        } else {
+          values = { reference_value: result.measurement };
+        }
+      } else if (equipmentType === 'cobalt60') {
+        const existingBaseline = baselines[test.test_id]?.values as { calibration_date?: string };
+        values = {
+          initial_activity: result.measurement,
+          calibration_date: existingBaseline?.calibration_date || new Date().toISOString().split('T')[0],
+          unit: 'Ci',
+          half_life_days: 1925.2
+        };
+      } else if (equipmentType === 'gamma_knife') {
+        values = {
+          dose_rate: result.measurement,
+          measurement_date: new Date().toISOString().split('T')[0]
+        };
+      } else if (equipmentType === 'mlc') {
+        if (test.test_id.includes('TRANSMISSION')) {
+          values = { leaf_transmission: result.measurement };
+        } else if (test.test_id.includes('LEAKAGE')) {
+          values = { interleaf_leakage: result.measurement };
+        } else {
+          values = { reference_value: result.measurement };
+        }
+      } else {
+        // Generic (linacs, etc.)
+        values = { reference_value: result.measurement };
+      }
+
+      const response = await fetch(`/api/equipment/${equipment.id}/baselines`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test_id: test.test_id, values }),
+      });
+
+      if (response.ok) {
+        setBaselines((prev) => ({
+          ...prev,
+          [test.test_id]: { values },
+        }));
+      }
+    } catch (err) {
+      console.error("Error saving baseline:", err);
+    } finally {
+      setSavingBaselineFor(null);
+    }
+  };
+
   // Handler for saving all current measurements as baselines
   const [savingBaselines, setSavingBaselines] = useState(false);
   const [baselineSaveMessage, setBaselineSaveMessage] = useState<string | null>(null);
@@ -316,8 +538,53 @@ function QAFormContent() {
         } else if (test.calculator_type === "timer_linearity") {
           const existingBaseline = baselines[test.test_id]?.values as { time_points?: number[] };
           values = { time_points: existingBaseline?.time_points || [10, 30, 60, 120] };
+        } else if (equipmentType === 'ct_simulator') {
+          // CT Simulator specific baseline handling
+          // Daily HU tests
+          if (test.test_id === 'DCS2') {
+            const existingBaseline = baselines[test.test_id]?.values || {};
+            values = { ...existingBaseline, water_hu: result.measurement };
+          } else if (test.test_id === 'DCS3') {
+            const existingBaseline = baselines[test.test_id]?.values || {};
+            values = { ...existingBaseline, noise_std: result.measurement };
+          } else if (test.test_id === 'DCS4') {
+            const existingBaseline = baselines[test.test_id]?.values || {};
+            values = { ...existingBaseline, uniformity_tolerance: result.measurement };
+          }
+          // Biennial CTDIvol tests
+          else if (test.test_id === 'BECS2') {
+            const existingBaseline = baselines[test.test_id]?.values || {};
+            values = { ...existingBaseline, ctdi_vol_reference: result.measurement };
+          } else if (test.test_id === 'BECS3') {
+            const existingBaseline = baselines[test.test_id]?.values || {};
+            values = { ...existingBaseline, ctdi_vol_4dct_reference: result.measurement };
+          } else {
+            values = { reference_value: result.measurement };
+          }
+        } else if (equipmentType === 'cobalt60') {
+          // Cobalt-60: preserve calibration date, update activity
+          const existingBaseline = baselines[test.test_id]?.values as { calibration_date?: string };
+          values = {
+            initial_activity: result.measurement,
+            calibration_date: existingBaseline?.calibration_date || new Date().toISOString().split('T')[0],
+            unit: 'Ci',
+            half_life_days: 1925.2
+          };
+        } else if (equipmentType === 'gamma_knife') {
+          values = {
+            dose_rate: result.measurement,
+            measurement_date: new Date().toISOString().split('T')[0]
+          };
+        } else if (equipmentType === 'mlc') {
+          if (test.test_id.includes('TRANSMISSION')) {
+            values = { leaf_transmission: result.measurement };
+          } else if (test.test_id.includes('LEAKAGE')) {
+            values = { interleaf_leakage: result.measurement };
+          } else {
+            values = { reference_value: result.measurement };
+          }
         } else {
-          // Generic measurement-based baseline
+          // Generic measurement-based baseline (linacs, etc.)
           values = { reference_value: result.measurement };
         }
 
@@ -500,7 +767,15 @@ function QAFormContent() {
               <div className="divide-y">
                 {categoryTests.map((test) => {
                   const result = results[test.test_id];
-                  const needsBaseline = test.requires_measurement && isPercentTolerance(test.tolerance);
+                  const tol = parseTolerance(test.tolerance);
+                  // Show baseline input for: percentage tolerances, tolerances with embedded expected values, or pre-populated baselines
+                  const hasEmbeddedExpected = tol?.expectedValue !== undefined;
+                  const hasPreloadedBaseline = result?.baseline_value !== undefined;
+                  const needsBaseline = test.requires_measurement && (
+                    isPercentTolerance(test.tolerance) || hasEmbeddedExpected || hasPreloadedBaseline
+                  );
+                  // Max threshold tests (like noise/uniformity) don't need baseline comparison
+                  const isThresholdTest = tol?.isMaxThreshold === true;
                   const statusColor = result?.status === "pass"
                     ? "bg-green-50 border-green-200"
                     : result?.status === "fail"
@@ -582,16 +857,18 @@ function QAFormContent() {
                           </div>
                         ) : test.requires_measurement ? (
                           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-                            {/* Reference/Baseline value for percentage tolerances */}
-                            {needsBaseline && (
+                            {/* Reference/Baseline value - show for non-threshold tests that need comparison */}
+                            {needsBaseline && !isThresholdTest && (
                               <div className="flex flex-col">
-                                <label className="text-xs text-gray-500 mb-1">Reference Value</label>
+                                <label className="text-xs text-gray-500 mb-1">
+                                  {hasEmbeddedExpected ? "Expected Value" : "Reference Value"}
+                                </label>
                                 <div className="flex items-center gap-1">
                                   <input
                                     type="number"
                                     step="any"
                                     placeholder="Expected"
-                                    value={result?.baseline_value ?? ""}
+                                    value={result?.baseline_value ?? (tol?.expectedValue ?? "")}
                                     onChange={(e) =>
                                       updateBaseline(
                                         test.test_id,
@@ -599,7 +876,7 @@ function QAFormContent() {
                                         test
                                       )
                                     }
-                                    className="w-24 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+                                    className="w-24 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary bg-gray-50"
                                   />
                                   {test.measurement_unit && (
                                     <span className="text-xs text-gray-500">{test.measurement_unit}</span>
@@ -611,13 +888,13 @@ function QAFormContent() {
                             {/* Measured value */}
                             <div className="flex flex-col">
                               <label className="text-xs text-gray-500 mb-1">
-                                {needsBaseline ? "Measured Value" : "Deviation from Expected"}
+                                {isThresholdTest ? "Measured Value" : needsBaseline ? "Measured Value" : "Deviation from Expected"}
                               </label>
                               <div className="flex items-center gap-1">
                                 <input
                                   type="number"
                                   step="any"
-                                  placeholder={needsBaseline ? "Measured" : "Deviation"}
+                                  placeholder={isThresholdTest ? "Value" : needsBaseline ? "Measured" : "Deviation"}
                                   value={result?.measurement ?? ""}
                                   onChange={(e) =>
                                     updateMeasurement(
@@ -650,7 +927,7 @@ function QAFormContent() {
                                   : "bg-gray-100 text-gray-800"
                               }`}>
                                 {result.status === "pass" ? "✓ PASS" : result.status === "fail" ? "✗ FAIL" : "N/A"}
-                                {result.deviation !== undefined && (
+                                {result.deviation !== undefined && !isThresholdTest && (
                                   <span className="ml-1 text-xs">
                                     ({result.deviation >= 0 ? "+" : ""}{result.deviation.toFixed(2)}{isPercentTolerance(test.tolerance) ? "%" : ""})
                                   </span>
@@ -680,6 +957,22 @@ function QAFormContent() {
                                 </button>
                               ))}
                             </div>
+
+                            {/* Save as Baseline button */}
+                            {result?.measurement !== undefined && (
+                              <button
+                                type="button"
+                                onClick={() => handleSaveSingleBaseline(test)}
+                                disabled={savingBaselineFor === test.test_id}
+                                className="px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors disabled:opacity-50 flex items-center gap-1"
+                                title="Save current measurement as baseline"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                {savingBaselineFor === test.test_id ? "Saving..." : "Set Baseline"}
+                              </button>
+                            )}
                           </div>
                         ) : (
                           /* Functional test - just Pass/Fail/N/A buttons */

@@ -14,6 +14,7 @@ import {
   OutputConstancyBaseline,
   Cobalt60SourceBaseline,
   CTHounsfieldBaseline,
+  CTDosimetryBaseline,
   GammaKnifeDoseRateBaseline,
   MLCBaseline,
 } from "@/types/database";
@@ -331,6 +332,12 @@ function BaselineSettingsModal({
     uniformity_tolerance: 5,
   });
 
+  // CT Simulator dosimetry baselines (biennial)
+  const [ctDosimetry, setCtDosimetry] = useState<CTDosimetryBaseline>({
+    ctdi_vol_reference: 0,
+    ctdi_vol_4dct_reference: 0,
+  });
+
   // Gamma Knife dose rate
   const [gammaKnifeData, setGammaKnifeData] = useState<GammaKnifeDoseRateBaseline>({
     dose_rate: 0,
@@ -420,6 +427,7 @@ function BaselineSettingsModal({
           }
 
           if (category === "ct_simulator") {
+            // Daily HU baselines
             const ctBaseline = data.baselines?.DCS2;
             if (ctBaseline?.values) {
               const vals = ctBaseline.values as CTHounsfieldBaseline;
@@ -428,6 +436,16 @@ function BaselineSettingsModal({
                 air_hu: vals.air_hu ?? -1000,
                 noise_std: vals.noise_std ?? 5,
                 uniformity_tolerance: vals.uniformity_tolerance ?? 5,
+              });
+            }
+
+            // Biennial dosimetry baselines
+            const dosimetryBaseline = data.baselines?.BECS2;
+            if (dosimetryBaseline?.values) {
+              const vals = dosimetryBaseline.values as CTDosimetryBaseline;
+              setCtDosimetry({
+                ctdi_vol_reference: vals.ctdi_vol_reference ?? 0,
+                ctdi_vol_4dct_reference: vals.ctdi_vol_4dct_reference ?? 0,
               });
             }
           }
@@ -519,9 +537,18 @@ function BaselineSettingsModal({
       }
 
       if (category === "ct_simulator") {
+        // Daily HU baselines
         savePromises.push(saveBaseline("DCS2", ctBaselines));
         savePromises.push(saveBaseline("DCS3", { noise_std: ctBaselines.noise_std }));
         savePromises.push(saveBaseline("DCS4", { uniformity_tolerance: ctBaselines.uniformity_tolerance }));
+
+        // Biennial dosimetry baselines
+        if (ctDosimetry.ctdi_vol_reference) {
+          savePromises.push(saveBaseline("BECS2", ctDosimetry));
+        }
+        if (ctDosimetry.ctdi_vol_4dct_reference) {
+          savePromises.push(saveBaseline("BECS3", { ctdi_vol_4dct_reference: ctDosimetry.ctdi_vol_4dct_reference }));
+        }
       }
 
       if (category === "gamma_knife") {
@@ -832,9 +859,10 @@ function BaselineSettingsModal({
   );
 
   const renderCTSimulatorForm = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="font-medium text-gray-900 mb-1">CT Number (HU) Baselines</h3>
+    <div className="space-y-8">
+      {/* Daily HU Baselines */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Daily - CT Number (HU) Baselines</h3>
         <p className="text-sm text-gray-500 mb-4">
           Reference values for daily CT number accuracy and noise checks.
         </p>
@@ -888,6 +916,42 @@ function BaselineSettingsModal({
               placeholder="5"
             />
             <p className="text-xs text-gray-500 mt-1">Tolerance: &lt;5 HU (action: &lt;10 HU)</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Biennial Dosimetry Baselines */}
+      <div>
+        <h3 className="font-medium text-gray-900 mb-1">Biennial - Radiation Dose (CTDIvol) Baselines</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Reference values for biennial radiation dose verification. Tolerance: ±10% (action: ±15%).
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">CTDIvol Reference (mGy)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={ctDosimetry.ctdi_vol_reference || ""}
+              onChange={(e) => setCtDosimetry(prev => ({ ...prev, ctdi_vol_reference: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 15.0"
+            />
+            <p className="text-xs text-gray-500 mt-1">Standard helical scan reference dose</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">4D-CT CTDIvol Reference (mGy)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={ctDosimetry.ctdi_vol_4dct_reference || ""}
+              onChange={(e) => setCtDosimetry(prev => ({ ...prev, ctdi_vol_4dct_reference: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 45.0"
+            />
+            <p className="text-xs text-gray-500 mt-1">4D-CT protocol reference dose</p>
           </div>
         </div>
       </div>
