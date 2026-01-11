@@ -258,6 +258,57 @@ function QAFormContent() {
                   }
                 }
 
+                // Map Linac baseline values
+                if (equipmentType === 'linac' || equipmentType === 'bore_linac' || equipmentType === 'linac_srs') {
+                  // Monthly - Beam flatness/symmetry tests
+                  if (test.test_id === 'ML13' && values.reference_flatness !== undefined) {
+                    baselineValue = values.reference_flatness;
+                  } else if (test.test_id === 'ML14' && values.reference_symmetry !== undefined) {
+                    baselineValue = values.reference_symmetry;
+                  }
+                  // Annual - TRS-398 calibration (AL6)
+                  else if (test.test_id === 'AL6' && values.reference_dose_rate !== undefined) {
+                    baselineValue = values.reference_dose_rate;
+                  }
+                  // Annual - Output factors (AL7) - use reference field output factor
+                  else if (test.test_id === 'AL7' && values.field_sizes !== undefined) {
+                    const refField = values.reference_field || '10x10';
+                    baselineValue = values.field_sizes[refField] ?? 1.0;
+                  }
+                  // Annual - Wedge transmission (AL8) - generic baseline
+                  else if (test.test_id === 'AL8' && values.wedge_factors !== undefined) {
+                    // Use first wedge factor as reference
+                    const wedges = Object.values(values.wedge_factors as Record<string, number>);
+                    baselineValue = wedges.length > 0 ? wedges[0] : undefined;
+                  }
+                  // Annual - Accessory transmission (AL9) - generic baseline
+                  else if (test.test_id === 'AL9' && values.accessory_factors !== undefined) {
+                    // Use first accessory factor as reference
+                    const accessories = Object.values(values.accessory_factors as Record<string, number>);
+                    baselineValue = accessories.length > 0 ? accessories[0] : undefined;
+                  }
+                  // Annual - Output vs gantry angle (AL10)
+                  else if (test.test_id === 'AL10' && values.reference_output_0deg !== undefined) {
+                    baselineValue = values.reference_output_0deg;
+                  }
+                  // Annual - Symmetry vs gantry angle (AL11)
+                  else if (test.test_id === 'AL11' && values.reference_symmetry_0deg !== undefined) {
+                    baselineValue = values.reference_symmetry_0deg;
+                  }
+                  // Annual - MU linearity (AL12) - end effect as baseline
+                  else if (test.test_id === 'AL12' && values.end_effect !== undefined) {
+                    baselineValue = values.end_effect;
+                  }
+                  // Annual - MU end effect (AL13)
+                  else if (test.test_id === 'AL13' && values.end_effect !== undefined) {
+                    baselineValue = values.end_effect;
+                  }
+                  // Output constancy - stored per energy, need to check OUTPUT_* baselines
+                  else if (values.reference_output !== undefined) {
+                    baselineValue = values.reference_output;
+                  }
+                }
+
                 // Map Cobalt-60 baseline values
                 if (equipmentType === 'cobalt60') {
                   if (values.initial_activity !== undefined) {
@@ -472,8 +523,73 @@ function QAFormContent() {
         } else {
           values = { reference_value: result.measurement };
         }
+      } else if (equipmentType === 'linac' || equipmentType === 'bore_linac' || equipmentType === 'linac_srs') {
+        // Monthly - Linac beam flatness/symmetry
+        if (test.test_id === 'ML13') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, reference_flatness: result.measurement };
+        } else if (test.test_id === 'ML14') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, reference_symmetry: result.measurement };
+        }
+        // Annual - TRS-398 calibration (AL6)
+        else if (test.test_id === 'AL6') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = {
+            ...existingBaseline,
+            reference_dose_rate: result.measurement,
+            measurement_date: new Date().toISOString().split('T')[0],
+          };
+        }
+        // Annual - Output factors (AL7)
+        else if (test.test_id === 'AL7') {
+          const existingBaseline = baselines[test.test_id]?.values as { field_sizes?: Record<string, number>; reference_field?: string } || { field_sizes: {}, reference_field: '10x10' };
+          values = {
+            ...existingBaseline,
+            field_sizes: { ...(existingBaseline.field_sizes || {}), '10x10': result.measurement },
+          };
+        }
+        // Annual - Wedge transmission (AL8)
+        else if (test.test_id === 'AL8') {
+          const existingBaseline = baselines[test.test_id]?.values as { wedge_factors?: Record<string, number> } || { wedge_factors: {} };
+          values = {
+            ...existingBaseline,
+            wedge_factors: { ...(existingBaseline.wedge_factors || {}), default: result.measurement },
+          };
+        }
+        // Annual - Accessory transmission (AL9)
+        else if (test.test_id === 'AL9') {
+          const existingBaseline = baselines[test.test_id]?.values as { accessory_factors?: Record<string, number> } || { accessory_factors: {} };
+          values = {
+            ...existingBaseline,
+            accessory_factors: { ...(existingBaseline.accessory_factors || {}), default: result.measurement },
+          };
+        }
+        // Annual - Output vs gantry angle (AL10)
+        else if (test.test_id === 'AL10') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, reference_output_0deg: result.measurement };
+        }
+        // Annual - Symmetry vs gantry angle (AL11)
+        else if (test.test_id === 'AL11') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, reference_symmetry_0deg: result.measurement };
+        }
+        // Annual - MU linearity (AL12)
+        else if (test.test_id === 'AL12') {
+          const existingBaseline = baselines[test.test_id]?.values || { mu_points: [5, 10, 25, 50, 100, 200, 300] };
+          values = { ...existingBaseline, end_effect: result.measurement };
+        }
+        // Annual - MU end effect (AL13)
+        else if (test.test_id === 'AL13') {
+          const existingBaseline = baselines[test.test_id]?.values || {};
+          values = { ...existingBaseline, end_effect: result.measurement };
+        } else {
+          // Generic linac test
+          values = { reference_value: result.measurement };
+        }
       } else {
-        // Generic (linacs, etc.)
+        // Generic fallback
         values = { reference_value: result.measurement };
       }
 
@@ -583,8 +699,20 @@ function QAFormContent() {
           } else {
             values = { reference_value: result.measurement };
           }
+        } else if (equipmentType === 'linac' || equipmentType === 'bore_linac' || equipmentType === 'linac_srs') {
+          // Linac beam flatness/symmetry
+          if (test.test_id === 'ML13') {
+            const existingBaseline = baselines[test.test_id]?.values || {};
+            values = { ...existingBaseline, reference_flatness: result.measurement };
+          } else if (test.test_id === 'ML14') {
+            const existingBaseline = baselines[test.test_id]?.values || {};
+            values = { ...existingBaseline, reference_symmetry: result.measurement };
+          } else {
+            // Generic linac test
+            values = { reference_value: result.measurement };
+          }
         } else {
-          // Generic measurement-based baseline (linacs, etc.)
+          // Generic measurement-based baseline
           values = { reference_value: result.measurement };
         }
 

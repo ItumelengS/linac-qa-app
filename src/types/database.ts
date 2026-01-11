@@ -303,6 +303,42 @@ export interface MLCBaseline {
   abutting_leaf_transmission?: number;
 }
 
+// Annual Linac baselines
+export interface TRS398CalibrationBaseline {
+  reference_dose_rate: number; // cGy/MU at reference conditions
+  measurement_date: string;
+  protocol_conditions?: string; // e.g., "10x10, 10cm depth, SSD 100cm"
+}
+
+export interface OutputFactorsBaseline {
+  field_sizes: {
+    [fieldSize: string]: number; // e.g., {"4x4": 0.92, "6x6": 0.95, "10x10": 1.0, "20x20": 1.04}
+  };
+  reference_field: string; // e.g., "10x10"
+}
+
+export interface WedgeTransmissionBaseline {
+  wedge_factors: {
+    [wedgeAngle: string]: number; // e.g., {"15": 0.75, "30": 0.55, "45": 0.42, "60": 0.30}
+  };
+}
+
+export interface AccessoryTransmissionBaseline {
+  accessory_factors: {
+    [accessory: string]: number; // e.g., {"Tray": 0.97, "Block Tray": 0.95}
+  };
+}
+
+export interface GantryOutputBaseline {
+  reference_output_0deg: number; // Reference output at gantry 0 degrees
+  reference_symmetry_0deg?: number; // Reference symmetry at gantry 0 degrees
+}
+
+export interface MULinearityBaseline {
+  mu_points: number[]; // e.g., [5, 10, 25, 50, 100, 200, 300]
+  end_effect?: number; // MU end effect value
+}
+
 export type BaselineValues =
   | SourceDecayBaseline
   | PositionDeviationBaseline
@@ -319,6 +355,12 @@ export type BaselineValues =
   | GammaKnifeOutputFactorBaseline
   | KilovoltageOutputBaseline
   | MLCBaseline
+  | TRS398CalibrationBaseline
+  | OutputFactorsBaseline
+  | WedgeTransmissionBaseline
+  | AccessoryTransmissionBaseline
+  | GantryOutputBaseline
+  | MULinearityBaseline
   | Record<string, unknown>;
 
 export interface EquipmentBaseline {

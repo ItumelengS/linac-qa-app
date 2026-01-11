@@ -12,11 +12,18 @@ import {
   DwellTimeBaseline,
   TimerLinearityBaseline,
   OutputConstancyBaseline,
+  BeamSymmetryBaseline,
   Cobalt60SourceBaseline,
   CTHounsfieldBaseline,
   CTDosimetryBaseline,
   GammaKnifeDoseRateBaseline,
   MLCBaseline,
+  TRS398CalibrationBaseline,
+  OutputFactorsBaseline,
+  WedgeTransmissionBaseline,
+  AccessoryTransmissionBaseline,
+  GantryOutputBaseline,
+  MULinearityBaseline,
 } from "@/types/database";
 
 const EQUIPMENT_TYPES: EquipmentType[] = [
@@ -316,6 +323,12 @@ function BaselineSettingsModal({
   // Linac output constancy per energy
   const [linacOutputs, setLinacOutputs] = useState<Record<string, OutputConstancyBaseline>>({});
 
+  // Linac beam flatness/symmetry baselines
+  const [beamSymmetry, setBeamSymmetry] = useState<BeamSymmetryBaseline>({
+    reference_flatness: 0,
+    reference_symmetry: 0,
+  });
+
   // Cobalt-60 source data
   const [cobaltSource, setCobaltSource] = useState<Cobalt60SourceBaseline>({
     initial_activity: 0,
@@ -350,6 +363,36 @@ function BaselineSettingsModal({
     leaf_transmission: 0,
     interleaf_leakage: 0,
     abutting_leaf_transmission: 0,
+  });
+
+  // Annual Linac baselines
+  const [trs398Data, setTrs398Data] = useState<TRS398CalibrationBaseline>({
+    reference_dose_rate: 0,
+    measurement_date: "",
+    protocol_conditions: "10x10, 10cm depth, SSD 100cm",
+  });
+
+  const [outputFactors, setOutputFactors] = useState<OutputFactorsBaseline>({
+    field_sizes: { "4x4": 0, "6x6": 0, "10x10": 1.0, "15x15": 0, "20x20": 0 },
+    reference_field: "10x10",
+  });
+
+  const [wedgeFactors, setWedgeFactors] = useState<WedgeTransmissionBaseline>({
+    wedge_factors: { "15": 0, "30": 0, "45": 0, "60": 0 },
+  });
+
+  const [accessoryFactors, setAccessoryFactors] = useState<AccessoryTransmissionBaseline>({
+    accessory_factors: { "Tray": 0, "Block Tray": 0 },
+  });
+
+  const [gantryOutput, setGantryOutput] = useState<GantryOutputBaseline>({
+    reference_output_0deg: 0,
+    reference_symmetry_0deg: 0,
+  });
+
+  const [muLinearity, setMuLinearity] = useState<MULinearityBaseline>({
+    mu_points: [5, 10, 25, 50, 100, 200, 300],
+    end_effect: 0,
   });
 
   // Get available energies from equipment
@@ -411,6 +454,76 @@ function BaselineSettingsModal({
               }
             });
             setLinacOutputs(outputs);
+
+            // Load beam flatness/symmetry baselines
+            const symmetryBaseline = data.baselines?.ML13;
+            if (symmetryBaseline?.values) {
+              const vals = symmetryBaseline.values as BeamSymmetryBaseline;
+              setBeamSymmetry({
+                reference_flatness: vals.reference_flatness ?? 0,
+                reference_symmetry: vals.reference_symmetry ?? 0,
+              });
+            }
+
+            // Load annual baselines
+            // AL6: TRS-398 calibration
+            const trs398Baseline = data.baselines?.AL6;
+            if (trs398Baseline?.values) {
+              const vals = trs398Baseline.values as TRS398CalibrationBaseline;
+              setTrs398Data({
+                reference_dose_rate: vals.reference_dose_rate ?? 0,
+                measurement_date: vals.measurement_date ?? "",
+                protocol_conditions: vals.protocol_conditions ?? "10x10, 10cm depth, SSD 100cm",
+              });
+            }
+
+            // AL7: Output factors
+            const outputFactorsBaseline = data.baselines?.AL7;
+            if (outputFactorsBaseline?.values) {
+              const vals = outputFactorsBaseline.values as OutputFactorsBaseline;
+              setOutputFactors({
+                field_sizes: vals.field_sizes ?? { "4x4": 0, "6x6": 0, "10x10": 1.0, "15x15": 0, "20x20": 0 },
+                reference_field: vals.reference_field ?? "10x10",
+              });
+            }
+
+            // AL8: Wedge factors
+            const wedgeBaseline = data.baselines?.AL8;
+            if (wedgeBaseline?.values) {
+              const vals = wedgeBaseline.values as WedgeTransmissionBaseline;
+              setWedgeFactors({
+                wedge_factors: vals.wedge_factors ?? { "15": 0, "30": 0, "45": 0, "60": 0 },
+              });
+            }
+
+            // AL9: Accessory factors
+            const accessoryBaseline = data.baselines?.AL9;
+            if (accessoryBaseline?.values) {
+              const vals = accessoryBaseline.values as AccessoryTransmissionBaseline;
+              setAccessoryFactors({
+                accessory_factors: vals.accessory_factors ?? { "Tray": 0, "Block Tray": 0 },
+              });
+            }
+
+            // AL10/AL11: Gantry output baselines
+            const gantryBaseline = data.baselines?.AL10;
+            if (gantryBaseline?.values) {
+              const vals = gantryBaseline.values as GantryOutputBaseline;
+              setGantryOutput({
+                reference_output_0deg: vals.reference_output_0deg ?? 0,
+                reference_symmetry_0deg: vals.reference_symmetry_0deg ?? 0,
+              });
+            }
+
+            // AL12/AL13: MU linearity
+            const muBaseline = data.baselines?.AL12;
+            if (muBaseline?.values) {
+              const vals = muBaseline.values as MULinearityBaseline;
+              setMuLinearity({
+                mu_points: vals.mu_points ?? [5, 10, 25, 50, 100, 200, 300],
+                end_effect: vals.end_effect ?? 0,
+              });
+            }
           }
 
           if (category === "cobalt60") {
@@ -522,11 +635,54 @@ function BaselineSettingsModal({
       }
 
       if (category === "linac") {
+        // Output constancy per energy
         for (const energy of allEnergies) {
           const output = linacOutputs[energy];
           if (output?.reference_output) {
             savePromises.push(saveBaseline(`OUTPUT_${energy}`, output));
           }
+        }
+
+        // Beam flatness/symmetry baselines
+        if (beamSymmetry.reference_flatness || beamSymmetry.reference_symmetry) {
+          savePromises.push(saveBaseline("ML13", beamSymmetry));
+          savePromises.push(saveBaseline("ML14", { reference_symmetry: beamSymmetry.reference_symmetry }));
+        }
+
+        // Annual baselines
+        // AL6: TRS-398 calibration
+        if (trs398Data.reference_dose_rate) {
+          savePromises.push(saveBaseline("AL6", trs398Data));
+        }
+
+        // AL7: Output factors
+        const hasOutputFactors = Object.values(outputFactors.field_sizes).some(v => v > 0);
+        if (hasOutputFactors) {
+          savePromises.push(saveBaseline("AL7", outputFactors));
+        }
+
+        // AL8: Wedge transmission factors
+        const hasWedgeFactors = Object.values(wedgeFactors.wedge_factors).some(v => v > 0);
+        if (hasWedgeFactors) {
+          savePromises.push(saveBaseline("AL8", wedgeFactors));
+        }
+
+        // AL9: Accessory transmission factors
+        const hasAccessoryFactors = Object.values(accessoryFactors.accessory_factors).some(v => v > 0);
+        if (hasAccessoryFactors) {
+          savePromises.push(saveBaseline("AL9", accessoryFactors));
+        }
+
+        // AL10/AL11: Gantry output/symmetry baselines
+        if (gantryOutput.reference_output_0deg || gantryOutput.reference_symmetry_0deg) {
+          savePromises.push(saveBaseline("AL10", gantryOutput));
+          savePromises.push(saveBaseline("AL11", { reference_symmetry_0deg: gantryOutput.reference_symmetry_0deg }));
+        }
+
+        // AL12/AL13: MU linearity
+        if (muLinearity.mu_points.length > 0 || muLinearity.end_effect) {
+          savePromises.push(saveBaseline("AL12", muLinearity));
+          savePromises.push(saveBaseline("AL13", { end_effect: muLinearity.end_effect }));
         }
       }
 
@@ -728,11 +884,12 @@ function BaselineSettingsModal({
   );
 
   const renderLinacForm = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="font-medium text-gray-900 mb-1">Output Constancy Reference Values</h3>
+    <div className="space-y-8">
+      {/* Output Constancy Reference Values */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Daily - Output Constancy Reference Values</h3>
         <p className="text-sm text-gray-500 mb-4">
-          Set reference output values for each beam energy. These are used for daily output constancy checks.
+          Set reference output values for each beam energy. Used for daily output constancy checks (DL8/DL9).
         </p>
 
         {allEnergies.length === 0 ? (
@@ -792,6 +949,285 @@ function BaselineSettingsModal({
             ))}
           </div>
         )}
+      </div>
+
+      {/* Beam Flatness/Symmetry Baselines */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Monthly - Beam Flatness & Symmetry Baselines</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Reference values for monthly beam flatness (ML13) and symmetry (ML14) constancy checks.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reference Flatness (%)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={beamSymmetry.reference_flatness || ""}
+              onChange={(e) => setBeamSymmetry(prev => ({ ...prev, reference_flatness: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 3.0"
+            />
+            <p className="text-xs text-gray-500 mt-1">Tolerance: ±1% (action: ±2%)</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reference Symmetry (%)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={beamSymmetry.reference_symmetry || ""}
+              onChange={(e) => setBeamSymmetry(prev => ({ ...prev, reference_symmetry: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 2.0"
+            />
+            <p className="text-xs text-gray-500 mt-1">Tolerance: ±1% (action: ±2%)</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Annual - TRS-398 Calibration (AL6) */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Annual - TRS-398 Calibration (AL6)</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Reference dose rate from TRS-398 absolute calibration.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reference Dose Rate (cGy/MU)</label>
+            <input
+              type="number"
+              step="0.001"
+              value={trs398Data.reference_dose_rate || ""}
+              onChange={(e) => setTrs398Data(prev => ({ ...prev, reference_dose_rate: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 1.000"
+            />
+            <p className="text-xs text-gray-500 mt-1">Tolerance: ±1% (action: ±2%)</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Measurement Date</label>
+            <input
+              type="date"
+              value={trs398Data.measurement_date || ""}
+              onChange={(e) => setTrs398Data(prev => ({ ...prev, measurement_date: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Protocol Conditions</label>
+            <input
+              type="text"
+              value={trs398Data.protocol_conditions || ""}
+              onChange={(e) => setTrs398Data(prev => ({ ...prev, protocol_conditions: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 10x10, 10cm depth, SSD 100cm"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Annual - Output Factors (AL7) */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Annual - Output Factors (AL7)</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Output factors for various field sizes relative to reference field.
+        </p>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Reference Field</label>
+          <input
+            type="text"
+            value={outputFactors.reference_field}
+            onChange={(e) => setOutputFactors(prev => ({ ...prev, reference_field: e.target.value }))}
+            className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder="10x10"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {Object.entries(outputFactors.field_sizes).map(([size, value]) => (
+            <div key={size}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{size}</label>
+              <input
+                type="number"
+                step="0.001"
+                value={value || ""}
+                onChange={(e) => setOutputFactors(prev => ({
+                  ...prev,
+                  field_sizes: { ...prev.field_sizes, [size]: parseFloat(e.target.value) || 0 }
+                }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="1.00"
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mt-2">Tolerance: ±1% (action: ±2%)</p>
+      </div>
+
+      {/* Annual - Wedge Transmission Factors (AL8) */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Annual - Wedge Transmission Factors (AL8)</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Wedge transmission factors for each wedge angle.
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Object.entries(wedgeFactors.wedge_factors).map(([angle, value]) => (
+            <div key={angle}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{angle}° Wedge</label>
+              <input
+                type="number"
+                step="0.001"
+                value={value || ""}
+                onChange={(e) => setWedgeFactors(prev => ({
+                  ...prev,
+                  wedge_factors: { ...prev.wedge_factors, [angle]: parseFloat(e.target.value) || 0 }
+                }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="0.00"
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mt-2">Tolerance: ±1% (action: ±2%)</p>
+      </div>
+
+      {/* Annual - Accessory Transmission Factors (AL9) */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Annual - Accessory Transmission Factors (AL9)</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Transmission factors for beam accessories (trays, blocks, etc.).
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {Object.entries(accessoryFactors.accessory_factors).map(([name, value]) => (
+            <div key={name}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{name}</label>
+              <input
+                type="number"
+                step="0.001"
+                value={value || ""}
+                onChange={(e) => setAccessoryFactors(prev => ({
+                  ...prev,
+                  accessory_factors: { ...prev.accessory_factors, [name]: parseFloat(e.target.value) || 0 }
+                }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="0.00"
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mt-2">Tolerance: ±1% (action: ±2%)</p>
+      </div>
+
+      {/* Annual - Gantry Output/Symmetry Baselines (AL10/AL11) */}
+      <div className="border-b pb-6">
+        <h3 className="font-medium text-gray-900 mb-1">Annual - Gantry Angle Baselines (AL10/AL11)</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Reference values at gantry 0° for output and symmetry vs gantry angle tests.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reference Output at 0° (cGy/MU)</label>
+            <input
+              type="number"
+              step="0.001"
+              value={gantryOutput.reference_output_0deg || ""}
+              onChange={(e) => setGantryOutput(prev => ({ ...prev, reference_output_0deg: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 1.000"
+            />
+            <p className="text-xs text-gray-500 mt-1">AL10: Output vs gantry angle - Tolerance: ±1%</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reference Symmetry at 0° (%)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={gantryOutput.reference_symmetry_0deg || ""}
+              onChange={(e) => setGantryOutput(prev => ({ ...prev, reference_symmetry_0deg: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 2.0"
+            />
+            <p className="text-xs text-gray-500 mt-1">AL11: Symmetry vs gantry angle - Tolerance: ±1%</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Annual - MU Linearity (AL12/AL13) */}
+      <div>
+        <h3 className="font-medium text-gray-900 mb-1">Annual - MU Linearity & End Effect (AL12/AL13)</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          MU test points for linearity testing and end effect value.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">MU Test Points</label>
+            <div className="flex flex-wrap gap-2">
+              {muLinearity.mu_points.map((point, idx) => (
+                <div key={idx} className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={point || ""}
+                    onChange={(e) => {
+                      const newPoints = [...muLinearity.mu_points];
+                      newPoints[idx] = parseInt(e.target.value) || 0;
+                      setMuLinearity(prev => ({ ...prev, mu_points: newPoints }));
+                    }}
+                    className="w-20 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                  />
+                  {muLinearity.mu_points.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newPoints = muLinearity.mu_points.filter((_, i) => i !== idx);
+                        setMuLinearity(prev => ({ ...prev, mu_points: newPoints }));
+                      }}
+                      className="text-red-500 hover:text-red-700 p-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setMuLinearity(prev => ({ ...prev, mu_points: [...prev.mu_points, 0] }))}
+                className="text-sm text-primary hover:text-primary/80 flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">AL12: Monitor unit linearity - Tolerance: ±1%</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">End Effect (MU)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={muLinearity.end_effect || ""}
+              onChange={(e) => setMuLinearity(prev => ({ ...prev, end_effect: parseFloat(e.target.value) || 0 }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="e.g., 0.5"
+            />
+            <p className="text-xs text-gray-500 mt-1">AL13: Monitor unit end effect - Tolerance: &lt;1 MU</p>
+          </div>
+        </div>
       </div>
     </div>
   );
