@@ -9,34 +9,43 @@ export async function GET(
 ) {
   try {
     const { userId } = await auth();
+    console.log("[Baselines GET] userId:", userId);
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id: equipmentId } = await params;
+    console.log("[Baselines GET] equipmentId:", equipmentId);
+    console.log("[Baselines GET] Using service key:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+
     const supabase = createClient();
 
     // Get user's profile to verify organization access
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("organization_id")
       .eq("clerk_id", userId)
       .single();
 
+    console.log("[Baselines GET] profile:", profile, "error:", profileError);
+
     if (!profile) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+      return NextResponse.json({ error: "Profile not found", details: profileError }, { status: 404 });
     }
 
     // Verify equipment belongs to user's organization
-    const { data: equipment } = await supabase
+    const { data: equipment, error: equipmentError } = await supabase
       .from("equipment")
       .select("id")
       .eq("id", equipmentId)
       .eq("organization_id", profile.organization_id)
       .single();
 
+    console.log("[Baselines GET] equipment:", equipment, "error:", equipmentError);
+
     if (!equipment) {
-      return NextResponse.json({ error: "Equipment not found" }, { status: 404 });
+      return NextResponse.json({ error: "Equipment not found", details: equipmentError }, { status: 404 });
     }
 
     // Fetch current baselines only
@@ -46,9 +55,11 @@ export async function GET(
       .eq("equipment_id", equipmentId)
       .eq("is_current", true);
 
+    console.log("[Baselines GET] baselines count:", baselines?.length, "error:", error);
+
     if (error) {
       console.error("Error fetching baselines:", error);
-      return NextResponse.json({ error: "Failed to fetch baselines" }, { status: 500 });
+      return NextResponse.json({ error: "Failed to fetch baselines", details: error }, { status: 500 });
     }
 
     // Convert to map by test_id for easy lookup
@@ -70,7 +81,10 @@ export async function GET(
     return NextResponse.json({ baselines: baselinesMap });
   } catch (error) {
     console.error("Baselines GET error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({
+      error: "Internal server error",
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
   }
 }
 
@@ -81,6 +95,8 @@ export async function PUT(
 ) {
   try {
     const { userId } = await auth();
+    console.log("[Baselines PUT] userId:", userId);
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -89,6 +105,9 @@ export async function PUT(
     const body = await request.json();
     const { test_id, values, notes, source_serial } = body;
 
+    console.log("[Baselines PUT] equipmentId:", equipmentId, "test_id:", test_id);
+    console.log("[Baselines PUT] Using service key:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+
     if (!test_id || !values) {
       return NextResponse.json({ error: "test_id and values are required" }, { status: 400 });
     }
@@ -96,14 +115,16 @@ export async function PUT(
     const supabase = createClient();
 
     // Get user's profile
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, organization_id")
       .eq("clerk_id", userId)
       .single();
 
+    console.log("[Baselines PUT] profile:", profile, "error:", profileError);
+
     if (!profile) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+      return NextResponse.json({ error: "Profile not found", details: profileError }, { status: 404 });
     }
 
     // Verify equipment belongs to user's organization
@@ -138,6 +159,7 @@ export async function PUT(
     }
 
     // Create new baseline
+    console.log("[Baselines PUT] Inserting baseline for equipment:", equipmentId, "test:", test_id);
     const { data: newBaseline, error: insertError } = await supabase
       .from("equipment_baselines")
       .insert({
@@ -153,9 +175,11 @@ export async function PUT(
       .select()
       .single();
 
+    console.log("[Baselines PUT] Insert result:", newBaseline, "error:", insertError);
+
     if (insertError) {
       console.error("Error creating baseline:", insertError);
-      return NextResponse.json({ error: "Failed to save baseline" }, { status: 500 });
+      return NextResponse.json({ error: "Failed to save baseline", details: insertError }, { status: 500 });
     }
 
     // If there was a previous baseline, mark it as superseded
@@ -178,7 +202,10 @@ export async function PUT(
     return NextResponse.json({ baseline: newBaseline });
   } catch (error) {
     console.error("Baselines PUT error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({
+      error: "Internal server error",
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
   }
 }
 

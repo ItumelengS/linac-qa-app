@@ -14,7 +14,15 @@
       "Bash(git pull:*)",
       "WebFetch(domain:linac-qa-app.vercel.app)",
       "Bash(npm run build:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(npx next:*)",
+      "Bash(npx tsc:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(gh auth login:*)",
+      "Bash(sudo apt update:*)",
+      "Bash(sudo apt install:*)",
+      "Bash(npx eslint:*)"
     ]
   }
 }
