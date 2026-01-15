@@ -110,12 +110,14 @@ export async function GET() {
       .limit(5);
 
     // Get brachytherapy equipment with source data
-    const { data: brachyEquipment } = await supabase
+    const { data: brachyEquipment, error: brachyError } = await supabase
       .from("equipment")
       .select("id, name, equipment_type")
       .eq("organization_id", organizationId)
       .eq("active", true)
       .in("equipment_type", ["brachytherapy_hdr", "brachytherapy_ldr"]);
+
+    console.log("[Dashboard] Brachy equipment:", brachyEquipment?.length, "error:", brachyError);
 
     // Get source baselines for brachytherapy equipment
     const brachySources: Array<{
@@ -133,13 +135,15 @@ export async function GET() {
     if (brachyEquipment && brachyEquipment.length > 0) {
       for (const equip of brachyEquipment) {
         // Get source baseline (DBR6 stores source decay data)
-        const { data: baseline } = await supabase
+        const { data: baseline, error: baselineError } = await supabase
           .from("equipment_baselines")
           .select("values, source_serial")
           .eq("equipment_id", equip.id)
           .eq("test_id", "DBR6")
           .eq("is_current", true)
           .single();
+
+        console.log("[Dashboard] Baseline for", equip.name, ":", baseline, "error:", baselineError);
 
         if (baseline?.values) {
           const vals = baseline.values as {
