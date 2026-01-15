@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
+import {
+  SRAKCalculator,
+  SourceDecayCheckCalculator,
+  CalculatorResult,
+} from "@/components/qa-calculators";
 import {
   EquipmentType,
   EQUIPMENT_TYPE_LABELS,
@@ -79,25 +84,31 @@ function EditEquipmentModal({
     photon_energies: equipment.photon_energies || [],
     electron_energies: equipment.electron_energies || [],
   });
-
-  const handleEnergyChange = (
-    type: "photon_energies" | "electron_energies",
-    value: string
-  ) => {
-    const energies = value.split(",").map((e) => e.trim()).filter(Boolean);
-    setFormData((prev) => ({ ...prev, [type]: energies }));
-  };
+  const [photonEnergiesInput, setPhotonEnergiesInput] = useState(
+    (equipment.photon_energies || []).join(", ")
+  );
+  const [electronEnergiesInput, setElectronEnergiesInput] = useState(
+    (equipment.electron_energies || []).join(", ")
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSaving(true);
 
+    // Parse energy inputs to arrays
+    const photonEnergies = photonEnergiesInput.split(",").map((e) => e.trim()).filter(Boolean);
+    const electronEnergies = electronEnergiesInput.split(",").map((e) => e.trim()).filter(Boolean);
+
     try {
       const response = await fetch(`/api/equipment/${equipment.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          photon_energies: photonEnergies,
+          electron_energies: electronEnergies,
+        }),
       });
 
       const data = await response.json();
@@ -237,8 +248,8 @@ function EditEquipmentModal({
                 </label>
                 <input
                   type="text"
-                  value={formData.photon_energies.join(", ")}
-                  onChange={(e) => handleEnergyChange("photon_energies", e.target.value)}
+                  value={photonEnergiesInput}
+                  onChange={(e) => setPhotonEnergiesInput(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="e.g., 6MV, 10MV, 15MV"
                 />
@@ -251,8 +262,8 @@ function EditEquipmentModal({
                 </label>
                 <input
                   type="text"
-                  value={formData.electron_energies.join(", ")}
-                  onChange={(e) => handleEnergyChange("electron_energies", e.target.value)}
+                  value={electronEnergiesInput}
+                  onChange={(e) => setElectronEnergiesInput(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="e.g., 6MeV, 9MeV, 12MeV"
                 />
@@ -395,6 +406,44 @@ function BaselineSettingsModal({
     end_effect: 0,
   });
 
+  // Quick Calculator states (for brachytherapy)
+  const [showSRAKCalculator, setShowSRAKCalculator] = useState(false);
+  const [showDecayCalculator, setShowDecayCalculator] = useState(false);
+  const [srakBaseline, setSrakBaseline] = useState<{
+    chamber_factor_nsk?: number;
+    electrometer_factor?: number;
+    reference_temperature?: number;
+    reference_pressure?: number;
+    certificate_srak?: number;
+    certificate_date?: string;
+    sweet_spot_position?: number;
+  }>({});
+
+  // Calculator update handlers (results not saved, just for display)
+  const handleSRAKUpdate = useCallback((result: CalculatorResult) => {
+    // Results are informational only in equipment settings
+    console.log("SRAK result:", result);
+  }, []);
+
+  const handleDecayUpdate = useCallback((result: CalculatorResult) => {
+    // Results are informational only in equipment settings
+    console.log("Decay check result:", result);
+  }, []);
+
+  const handleSaveSRAKBaseline = useCallback((values: BaselineValues) => {
+    setSrakBaseline(values as typeof srakBaseline);
+  }, []);
+
+  const handleSaveDecayBaseline = useCallback((values: BaselineValues) => {
+    const vals = values as SourceDecayBaseline;
+    setSourceData(prev => ({
+      ...prev,
+      initial_activity: vals.initial_activity || prev.initial_activity,
+      calibration_date: vals.calibration_date || prev.calibration_date,
+      unit: vals.unit || prev.unit,
+    }));
+  }, []);
+
   // Get available energies from equipment
   const allEnergies = [
     ...(equipment.photon_energies || []),
@@ -439,6 +488,21 @@ function BaselineSettingsModal({
             if (timerBaseline?.values) {
               const vals = timerBaseline.values as TimerLinearityBaseline;
               setTimerLinearityData({ time_points: vals.time_points || [10, 30, 60, 120] });
+            }
+
+            // Load SRAK baseline (QBR4)
+            const srakBaselineData = data.baselines?.QBR4;
+            if (srakBaselineData?.values) {
+              const vals = srakBaselineData.values as {
+                chamber_factor_nsk?: number;
+                electrometer_factor?: number;
+                reference_temperature?: number;
+                reference_pressure?: number;
+                certificate_srak?: number;
+                certificate_date?: string;
+                sweet_spot_position?: number;
+              };
+              setSrakBaseline(vals);
             }
           }
 
@@ -849,7 +913,7 @@ function BaselineSettingsModal({
       </div>
 
       {/* Timer Linearity */}
-      <div>
+      <div className="border-b pb-6">
         <h3 className="font-medium text-gray-900 mb-1">Timer Linearity Test Points</h3>
         <p className="text-sm text-gray-500 mb-4">Time points (seconds) for timer linearity testing.</p>
         <div className="space-y-2">
@@ -878,6 +942,87 @@ function BaselineSettingsModal({
             </svg>
             Add Time Point
           </button>
+        </div>
+      </div>
+
+      {/* Quick Calculators Section */}
+      <div>
+        <h3 className="font-medium text-gray-900 mb-1 flex items-center gap-2">
+          <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+          Quick Calculators
+        </h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Standalone calculators for source verification. Results are not saved - use the QA page for recorded measurements.
+        </p>
+
+        <div className="space-y-4">
+          {/* SRAK Calculator */}
+          <div className="border rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowSRAKCalculator(!showSRAKCalculator)}
+              className="w-full px-4 py-3 bg-purple-50 flex items-center justify-between text-left hover:bg-purple-100 transition-colors"
+            >
+              <div>
+                <span className="font-medium text-purple-900">SRAK Calculator</span>
+                <p className="text-sm text-purple-700">Source Reference Air Kerma Rate using well chamber</p>
+              </div>
+              <svg
+                className={`w-5 h-5 text-purple-600 transition-transform ${showSRAKCalculator ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showSRAKCalculator && (
+              <div className="p-4 border-t border-purple-200">
+                <SRAKCalculator
+                  testId="equipment-srak"
+                  tolerance="±3%"
+                  actionLevel="±5%"
+                  initialValues={srakBaseline}
+                  onUpdate={handleSRAKUpdate}
+                  onSaveBaseline={handleSaveSRAKBaseline}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Source Decay Check Calculator */}
+          <div className="border rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowDecayCalculator(!showDecayCalculator)}
+              className="w-full px-4 py-3 bg-amber-50 flex items-center justify-between text-left hover:bg-amber-100 transition-colors"
+            >
+              <div>
+                <span className="font-medium text-amber-900">Source Decay Check</span>
+                <p className="text-sm text-amber-700">Quick Ir-192 decay verification vs console</p>
+              </div>
+              <svg
+                className={`w-5 h-5 text-amber-600 transition-transform ${showDecayCalculator ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showDecayCalculator && (
+              <div className="p-4 border-t border-amber-200">
+                <SourceDecayCheckCalculator
+                  testId="equipment-decay"
+                  initialValues={sourceData}
+                  onUpdate={handleDecayUpdate}
+                  onSaveBaseline={handleSaveDecayBaseline}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1526,28 +1671,28 @@ function BaselineSettingsModal({
   const hasBaselines = category !== "other" && category !== "kilovoltage";
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
-          <div>
-            <h2 className="text-lg font-semibold">Equipment Baseline Settings</h2>
-            <p className="text-sm text-gray-500">{equipment.name} - {EQUIPMENT_TYPE_LABELS[equipment.equipment_type]}</p>
+    <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto my-2 sm:my-0">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+          <div className="min-w-0 flex-1 mr-4">
+            <h2 className="text-base sm:text-lg font-semibold truncate">Baseline Settings</h2>
+            <p className="text-xs sm:text-sm text-gray-500 truncate">{equipment.name}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 flex-shrink-0">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {renderFormContent()}
         </div>
 
-        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 sticky bottom-0">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t bg-gray-50 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 sticky bottom-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            className="w-full sm:w-auto px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
           >
             Cancel
           </button>
@@ -1555,7 +1700,7 @@ function BaselineSettingsModal({
             <button
               onClick={handleSaveAllBaselines}
               disabled={saving}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+              className="w-full sm:w-auto px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
             >
               {saving ? "Saving..." : "Save All Settings"}
             </button>
@@ -1586,6 +1731,8 @@ export default function EquipmentPage() {
     photon_energies: [] as string[],
     electron_energies: [] as string[],
   });
+  const [photonEnergiesInput, setPhotonEnergiesInput] = useState("");
+  const [electronEnergiesInput, setElectronEnergiesInput] = useState("");
 
   // Fetch equipment on load
   useEffect(() => {
@@ -1613,14 +1760,6 @@ export default function EquipmentPage() {
     }
   };
 
-  const handleEnergyChange = (
-    type: "photon_energies" | "electron_energies",
-    value: string
-  ) => {
-    const energies = value.split(",").map((e) => e.trim()).filter(Boolean);
-    setFormData((prev) => ({ ...prev, [type]: energies }));
-  };
-
   const handleEquipmentUpdated = (updated: Equipment) => {
     setEquipment((prev) =>
       prev.map((item) => (item.id === updated.id ? updated : item))
@@ -1632,13 +1771,21 @@ export default function EquipmentPage() {
     setError(null);
     setSaving(true);
 
+    // Parse energy inputs to arrays
+    const photonEnergies = photonEnergiesInput.split(",").map((e) => e.trim()).filter(Boolean);
+    const electronEnergies = electronEnergiesInput.split(",").map((e) => e.trim()).filter(Boolean);
+
     try {
       const response = await fetch("/api/equipment", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          photon_energies: photonEnergies,
+          electron_energies: electronEnergies,
+        }),
       });
 
       const data = await response.json();
@@ -1662,6 +1809,8 @@ export default function EquipmentPage() {
         photon_energies: [],
         electron_energies: [],
       });
+      setPhotonEnergiesInput("");
+      setElectronEnergiesInput("");
       setShowAddForm(false);
     } catch (err) {
       console.error("Error saving equipment:", err);
@@ -1829,8 +1978,8 @@ export default function EquipmentPage() {
                   </label>
                   <input
                     type="text"
-                    value={formData.photon_energies.join(", ")}
-                    onChange={(e) => handleEnergyChange("photon_energies", e.target.value)}
+                    value={photonEnergiesInput}
+                    onChange={(e) => setPhotonEnergiesInput(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="e.g., 6MV, 10MV, 15MV"
                   />
@@ -1843,8 +1992,8 @@ export default function EquipmentPage() {
                   </label>
                   <input
                     type="text"
-                    value={formData.electron_energies.join(", ")}
-                    onChange={(e) => handleEnergyChange("electron_energies", e.target.value)}
+                    value={electronEnergiesInput}
+                    onChange={(e) => setElectronEnergiesInput(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="e.g., 6MeV, 9MeV, 12MeV"
                   />

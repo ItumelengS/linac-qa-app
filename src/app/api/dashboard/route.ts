@@ -109,6 +109,70 @@ export async function GET() {
       .order("created_at", { ascending: false })
       .limit(5);
 
+    // Get brachytherapy equipment with source data
+    const { data: brachyEquipment } = await supabase
+      .from("equipment")
+      .select("id, name, equipment_type")
+      .eq("organization_id", organizationId)
+      .eq("active", true)
+      .in("equipment_type", ["brachytherapy_hdr", "brachytherapy_ldr"]);
+
+    // Get source baselines for brachytherapy equipment
+    const brachySources: Array<{
+      equipment_id: string;
+      equipment_name: string;
+      equipment_type: string;
+      source_serial?: string;
+      initial_activity?: number;
+      calibration_date?: string;
+      unit?: string;
+      current_activity?: number;
+      days_elapsed?: number;
+    }> = [];
+
+    if (brachyEquipment && brachyEquipment.length > 0) {
+      for (const equip of brachyEquipment) {
+        // Get source baseline (DBR6 stores source decay data)
+        const { data: baseline } = await supabase
+          .from("equipment_baselines")
+          .select("values, source_serial")
+          .eq("equipment_id", equip.id)
+          .eq("test_id", "DBR6")
+          .eq("is_current", true)
+          .single();
+
+        if (baseline?.values) {
+          const vals = baseline.values as {
+            initial_activity?: number;
+            calibration_date?: string;
+            unit?: string;
+          };
+
+          if (vals.initial_activity && vals.calibration_date) {
+            // Calculate current activity using Ir-192 decay
+            const halfLife = 73.83; // days
+            const decayConstant = Math.LN2 / halfLife;
+            const calDate = new Date(vals.calibration_date);
+            const today = new Date();
+            const daysElapsed = (today.getTime() - calDate.getTime()) / (1000 * 60 * 60 * 24);
+            const currentActivity = vals.initial_activity * Math.exp(-decayConstant * daysElapsed);
+
+            brachySources.push({
+              equipment_id: equip.id,
+              equipment_name: equip.name,
+              equipment_type: equip.equipment_type,
+              source_serial: baseline.source_serial || undefined,
+              initial_activity: vals.initial_activity,
+              calibration_date: vals.calibration_date,
+              unit: vals.unit || "Ci",
+              current_activity: currentActivity,
+              days_elapsed: Math.round(daysElapsed),
+            });
+          }
+        }
+      }
+    }
+
     // Check setup status
     const hasOrganizationName = organization?.name && !organization.name.includes("'s Organization");
     const hasEquipment = (equipmentCount || 0) > 0;
@@ -128,6 +192,7 @@ export async function GET() {
         isComplete: hasOrganizationName && hasEquipment,
       },
       recentReports: recentReports || [],
+      brachySources,
     });
   } catch (error) {
     console.error("Dashboard GET error:", error);

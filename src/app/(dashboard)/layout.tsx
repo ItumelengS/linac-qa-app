@@ -31,7 +31,7 @@ export default async function DashboardLayout({
     <div className="min-h-screen bg-gray-50">
       <Sidebar profile={profile} />
       <div className="lg:pl-64">
-        <main className="p-4 lg:p-8">{children}</main>
+        <main className="p-4 lg:p-8 pt-4 lg:pt-8">{children}</main>
       </div>
     </div>
   );

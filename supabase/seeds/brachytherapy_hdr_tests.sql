@@ -63,7 +63,7 @@ VALUES
   ('brachytherapy_hdr', 'QBR3', 'quarterly', 'Power failure recovery - Verify equipment safely terminates and resumes after power failure', 'Functional', NULL, 'Safety Systems', false, NULL, NULL, 3, true),
 
   -- Source Calibration (Measurement Tests)
-  ('brachytherapy_hdr', 'QBR4', 'quarterly', 'Source strength calibration - Compare measured vs manufacturer value using SSDL-calibrated chamber', '±3%', '±5%', 'Source Calibration', true, '%', 'percentage_difference', 4, true),
+  ('brachytherapy_hdr', 'QBR4', 'quarterly', 'Source strength calibration (SRAK) - Measure source reference air kerma rate using well chamber and compare to decayed certificate value', '±3%', '±5%', 'Source Calibration', true, 'μGy·m²·h⁻¹', 'srak_calculation', 4, true),
   ('brachytherapy_hdr', 'QBR5', 'quarterly', 'Source positional accuracy - Deviation should be 0 mm at source replacement', '±1mm', '±2mm', 'Source Position', true, 'mm', 'position_deviation', 5, true),
 
   -- Timer Accuracy (Measurement Tests)

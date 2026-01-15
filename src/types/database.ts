@@ -39,7 +39,8 @@ export type CalculatorType =
   | "dwell_time"              // Set time vs Measured time (%)
   | "timer_linearity"         // Multiple time points, max deviation
   | "transit_reproducibility" // Multiple readings, mean + variation
-  | "source_decay_check";     // Source decay verification
+  | "source_decay_check"      // Source decay verification
+  | "srak_calculation";       // Source Reference Air Kerma Rate (HDR brachytherapy)
 
 export type ReportStatus = "draft" | "submitted" | "reviewed" | "approved" | "rejected";
 
@@ -217,6 +218,17 @@ export interface SourceDecayBaseline {
   min_usable_activity?: number;
 }
 
+// HDR Brachytherapy SRAK calculation baseline
+export interface SRAKBaseline {
+  chamber_factor_nsk: number;      // μGy·m²·h⁻¹·nA⁻¹
+  electrometer_factor: number;     // typically 1.000
+  reference_temperature: number;   // typically 20°C
+  reference_pressure: number;      // typically 101.325 kPa
+  certificate_srak: number;        // μGy·m²·h⁻¹ at calibration
+  certificate_date: string;        // ISO date string
+  sweet_spot_position?: number;    // mm - position of max response in well chamber
+}
+
 export interface PositionDeviationBaseline {
   expected_position: number;
 }
@@ -341,6 +353,7 @@ export interface MULinearityBaseline {
 
 export type BaselineValues =
   | SourceDecayBaseline
+  | SRAKBaseline
   | PositionDeviationBaseline
   | DwellTimeBaseline
   | PercentageDifferenceBaseline

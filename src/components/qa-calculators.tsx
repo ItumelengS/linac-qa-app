@@ -604,6 +604,570 @@ export function SourceDecayCheckCalculator({ testId, tolerance, actionLevel, ini
 }
 
 // ============================================================================
+// SRAK Calculator (Source Reference Air Kerma Rate)
+// HDR Brachytherapy source strength verification using well chamber
+// Sk = M × Nsk × kTP × kelec
+// Includes sweet spot determination (coarse + fine scan)
+// ============================================================================
+export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline }: CalculatorProps) {
+  const initVals = initialValues as {
+    chamber_factor_nsk?: number;
+    electrometer_factor?: number;
+    reference_temperature?: number;
+    reference_pressure?: number;
+    certificate_srak?: number;
+    certificate_date?: string;
+    sweet_spot_position?: number;
+  } | undefined;
+
+  // Sweet spot determination state
+  const [showSweetSpot, setShowSweetSpot] = useState<boolean>(false);
+  const [sweetSpotPhase, setSweetSpotPhase] = useState<"coarse" | "fine" | "complete">("coarse");
+  const [coarseStartPos, setCoarseStartPos] = useState<string>("960");
+  const [coarseReadings, setCoarseReadings] = useState<{ position: number; reading: string }[]>([]);
+  const [fineReadings, setFineReadings] = useState<{ position: number; reading: string }[]>([]);
+  const [sweetSpotPosition, setSweetSpotPosition] = useState<string>(initVals?.sweet_spot_position?.toString() || "");
+
+  // Initialize coarse positions (9 positions at 5mm intervals over 40mm)
+  const initializeCoarsePositions = useCallback(() => {
+    const start = parseFloat(coarseStartPos) || 960;
+    const positions = [];
+    for (let i = 0; i < 9; i++) {
+      positions.push({ position: start + i * 5, reading: "" });
+    }
+    setCoarseReadings(positions);
+    setSweetSpotPhase("coarse");
+  }, [coarseStartPos]);
+
+  // Initialize fine positions (11 positions at 1mm intervals, ±5mm around coarse max)
+  const initializeFinePositions = useCallback((centerPos: number) => {
+    const positions = [];
+    for (let i = -5; i <= 5; i++) {
+      positions.push({ position: centerPos + i, reading: "" });
+    }
+    setFineReadings(positions);
+    setSweetSpotPhase("fine");
+  }, []);
+
+  // Find max reading position from array
+  const findMaxPosition = (readings: { position: number; reading: string }[]): number | null => {
+    let maxReading = -Infinity;
+    let maxPos: number | null = null;
+    readings.forEach((r) => {
+      const val = parseFloat(r.reading);
+      if (!isNaN(val) && val > maxReading) {
+        maxReading = val;
+        maxPos = r.position;
+      }
+    });
+    return maxPos;
+  };
+
+  // Update coarse reading
+  const updateCoarseReading = (index: number, value: string) => {
+    const newReadings = [...coarseReadings];
+    newReadings[index] = { ...newReadings[index], reading: value };
+    setCoarseReadings(newReadings);
+  };
+
+  // Update fine reading
+  const updateFineReading = (index: number, value: string) => {
+    const newReadings = [...fineReadings];
+    newReadings[index] = { ...newReadings[index], reading: value };
+    setFineReadings(newReadings);
+  };
+
+  // Complete coarse phase and move to fine
+  const completeCoarsePhase = () => {
+    const maxPos = findMaxPosition(coarseReadings);
+    if (maxPos !== null) {
+      initializeFinePositions(maxPos);
+    }
+  };
+
+  // Complete fine phase and set sweet spot
+  const completeFinePhase = () => {
+    const maxPos = findMaxPosition(fineReadings);
+    if (maxPos !== null) {
+      setSweetSpotPosition(maxPos.toString());
+      setSweetSpotPhase("complete");
+    }
+  };
+
+  // Baseline values (chamber/certificate data)
+  const [chamberNsk, setChamberNsk] = useState<string>(initVals?.chamber_factor_nsk?.toString() || "");
+  const [electrometerFactor, setElectrometerFactor] = useState<string>(initVals?.electrometer_factor?.toString() || "1.000");
+  const [refTemp, setRefTemp] = useState<string>(initVals?.reference_temperature?.toString() || "20");
+  const [refPressure, setRefPressure] = useState<string>(initVals?.reference_pressure?.toString() || "101.325");
+  const [certSRAK, setCertSRAK] = useState<string>(initVals?.certificate_srak?.toString() || "");
+  const [certDate, setCertDate] = useState<string>(initVals?.certificate_date || "");
+
+  // Measurement values (3 readings at sweet spot)
+  const [readings, setReadings] = useState<string[]>(["", "", ""]);
+  const [measuredTemp, setMeasuredTemp] = useState<string>("");
+  const [measuredPressure, setMeasuredPressure] = useState<string>("");
+
+  const updateReading = (index: number, value: string) => {
+    const newReadings = [...readings];
+    newReadings[index] = value;
+    setReadings(newReadings);
+  };
+
+  const calculate = useCallback(() => {
+    const nsk = parseFloat(chamberNsk);
+    const kelec = parseFloat(electrometerFactor);
+    const T0 = parseFloat(refTemp);
+    const P0 = parseFloat(refPressure);
+    const certValue = parseFloat(certSRAK);
+    const T = parseFloat(measuredTemp);
+    const P = parseFloat(measuredPressure);
+
+    // Parse readings and calculate mean
+    const readingValues = readings.map(r => parseFloat(r)).filter(v => !isNaN(v));
+
+    if (readingValues.length === 0 || isNaN(nsk)) {
+      onUpdate({ status: "", notes: "", calculatorData: { readings, chamberNsk, measuredTemp, measuredPressure } });
+      return;
+    }
+
+    const meanReading = readingValues.reduce((a, b) => a + b, 0) / readingValues.length;
+
+    // Calculate kTP correction factor
+    let kTP = 1.0;
+    if (!isNaN(T) && !isNaN(P) && !isNaN(T0) && !isNaN(P0) && P !== 0) {
+      kTP = ((273.15 + T) / (273.15 + T0)) * (P0 / P);
+    }
+
+    // Calculate measured SRAK: Sk = M × Nsk × kTP × kelec
+    const kElec = isNaN(kelec) ? 1.0 : kelec;
+    const measuredSRAK = meanReading * nsk * kTP * kElec;
+
+    // If no certificate data, just show measured value
+    if (isNaN(certValue) || !certDate) {
+      const sweetSpotInfo = sweetSpotPosition ? ` [Sweet spot: ${sweetSpotPosition}mm]` : "";
+      onUpdate({
+        measurement: measuredSRAK,
+        status: "",
+        notes: `Measured SRAK: ${measuredSRAK.toFixed(1)} μGy·m²·h⁻¹ (Mean M: ${meanReading.toFixed(2)} nA, kTP: ${kTP.toFixed(4)})${sweetSpotInfo}`,
+        calculatorData: { readings: readingValues, meanReading, nsk, kTP, kElec, measuredSRAK, sweetSpotPosition: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined },
+      });
+      return;
+    }
+
+    // Calculate decayed certificate value (Ir-192 half-life = 73.83 days)
+    const certDateObj = new Date(certDate);
+    const today = new Date();
+    const daysElapsed = (today.getTime() - certDateObj.getTime()) / (1000 * 60 * 60 * 24);
+    const decayedCert = certValue * Math.exp(-DECAY_CONSTANT * daysElapsed);
+
+    // Calculate percentage difference
+    const deviation = ((measuredSRAK - decayedCert) / decayedCert) * 100;
+    const absDeviation = Math.abs(deviation);
+
+    // Determine status based on tolerance (default ±3%, action level ±5%)
+    const { status, message } = getStatus(absDeviation, tolerance || "±3%", actionLevel || "±5%");
+
+    const sweetSpotNote = sweetSpotPosition ? ` [Sweet spot: ${sweetSpotPosition}mm]` : "";
+    onUpdate({
+      measurement: measuredSRAK,
+      baseline_value: decayedCert,
+      deviation,
+      status,
+      notes: `Measured: ${measuredSRAK.toFixed(1)} μGy·m²·h⁻¹, Expected: ${decayedCert.toFixed(1)} μGy·m²·h⁻¹ (${daysElapsed.toFixed(0)}d decay), Diff: ${deviation >= 0 ? "+" : ""}${deviation.toFixed(2)}%.${sweetSpotNote} ${message}`,
+      calculatorData: {
+        readings: readingValues,
+        meanReading,
+        nsk,
+        kTP,
+        kElec,
+        measuredSRAK,
+        decayedCert,
+        daysElapsed,
+        certValue,
+        certDate,
+        sweetSpotPosition: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined,
+      },
+    });
+  }, [readings, chamberNsk, electrometerFactor, refTemp, refPressure, certSRAK, certDate, measuredTemp, measuredPressure, sweetSpotPosition, tolerance, actionLevel, onUpdate]);
+
+  useEffect(() => {
+    calculate();
+  }, [calculate]);
+
+  // Calculate values for display
+  const readingValues = readings.map(r => parseFloat(r)).filter(v => !isNaN(v));
+  const meanReading = readingValues.length > 0 ? readingValues.reduce((a, b) => a + b, 0) / readingValues.length : null;
+
+  const nsk = parseFloat(chamberNsk);
+  const T = parseFloat(measuredTemp);
+  const P = parseFloat(measuredPressure);
+  const T0 = parseFloat(refTemp);
+  const P0 = parseFloat(refPressure);
+  const kelec = parseFloat(electrometerFactor) || 1.0;
+
+  let kTP: number | null = null;
+  if (!isNaN(T) && !isNaN(P) && !isNaN(T0) && !isNaN(P0) && P !== 0) {
+    kTP = ((273.15 + T) / (273.15 + T0)) * (P0 / P);
+  }
+
+  const measuredSRAK = meanReading !== null && !isNaN(nsk) && kTP !== null
+    ? meanReading * nsk * kTP * kelec
+    : null;
+
+  const certValue = parseFloat(certSRAK);
+  const certDateObj = certDate ? new Date(certDate) : null;
+  const today = new Date();
+  const daysElapsed = certDateObj ? (today.getTime() - certDateObj.getTime()) / (1000 * 60 * 60 * 24) : null;
+  const decayedCert = !isNaN(certValue) && daysElapsed !== null
+    ? certValue * Math.exp(-DECAY_CONSTANT * daysElapsed)
+    : null;
+
+  const deviation = measuredSRAK !== null && decayedCert !== null
+    ? ((measuredSRAK - decayedCert) / decayedCert) * 100
+    : null;
+
+  const handleSaveBaseline = () => {
+    if (chamberNsk && certSRAK && certDate && onSaveBaseline) {
+      onSaveBaseline({
+        chamber_factor_nsk: parseFloat(chamberNsk),
+        electrometer_factor: parseFloat(electrometerFactor) || 1.0,
+        reference_temperature: parseFloat(refTemp) || 20,
+        reference_pressure: parseFloat(refPressure) || 101.325,
+        certificate_srak: parseFloat(certSRAK),
+        certificate_date: certDate,
+        sweet_spot_position: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined,
+      });
+    }
+  };
+
+  // Get max values for highlighting
+  const coarseMaxPos = findMaxPosition(coarseReadings);
+  const fineMaxPos = findMaxPosition(fineReadings);
+
+  return (
+    <div className="mt-2 p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+        <div className="text-xs font-medium text-gray-500">SRAK Calculator (Well Chamber)</div>
+        {onSaveBaseline && (
+          <button
+            type="button"
+            onClick={handleSaveBaseline}
+            disabled={!chamberNsk || !certSRAK || !certDate}
+            className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed self-start sm:self-auto"
+          >
+            Save Chamber/Cert Data
+          </button>
+        )}
+      </div>
+
+      {/* Sweet Spot Determination (Collapsible) */}
+      <div className="mb-3">
+        <button
+          type="button"
+          onClick={() => {
+            setShowSweetSpot(!showSweetSpot);
+            if (!showSweetSpot && coarseReadings.length === 0) {
+              initializeCoarsePositions();
+            }
+          }}
+          className="flex items-center gap-2 text-sm font-medium text-purple-700 hover:text-purple-900"
+        >
+          <span className={`transform transition-transform ${showSweetSpot ? "rotate-90" : ""}`}>▶</span>
+          Sweet Spot Determination
+          {sweetSpotPosition && (
+            <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-800 text-xs rounded">
+              {sweetSpotPosition} mm
+            </span>
+          )}
+        </button>
+
+        {showSweetSpot && (
+          <div className="mt-2 p-2 sm:p-3 bg-purple-50 rounded border border-purple-200">
+            {/* Coarse Scan Phase */}
+            {sweetSpotPhase === "coarse" && (
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                  <div className="text-xs font-medium text-purple-700">Phase 1: Coarse Scan (5mm steps)</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-gray-500">Start:</label>
+                    <input
+                      type="number"
+                      value={coarseStartPos}
+                      onChange={(e) => setCoarseStartPos(e.target.value)}
+                      className="w-16 sm:w-20 px-2 py-1 text-xs border border-gray-300 rounded"
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
+                    <button
+                      type="button"
+                      onClick={initializeCoarsePositions}
+                      className="text-xs px-2 py-1 bg-purple-200 text-purple-800 rounded hover:bg-purple-300"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+                  {coarseReadings.map((r, i) => (
+                    <div key={i} className={`flex items-center gap-1 ${r.position === coarseMaxPos ? "bg-yellow-100 rounded px-1" : ""}`}>
+                      <span className="text-xs text-gray-500 w-10 sm:w-12">{r.position}:</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="nA"
+                        value={r.reading}
+                        onChange={(e) => updateCoarseReading(i, e.target.value)}
+                        className="flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded"
+                      />
+                      {r.position === coarseMaxPos && <span className="text-yellow-600 text-xs">★</span>}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <div className="text-xs text-gray-500">
+                    {coarseMaxPos !== null ? `Max at ${coarseMaxPos}mm` : "Enter readings to find max"}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={completeCoarsePhase}
+                    disabled={coarseMaxPos === null}
+                    className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                  >
+                    Proceed to Fine Scan →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Fine Scan Phase */}
+            {sweetSpotPhase === "fine" && (
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                  <div className="text-xs font-medium text-purple-700">Phase 2: Fine Scan (1mm around {coarseMaxPos}mm)</div>
+                  <button
+                    type="button"
+                    onClick={() => setSweetSpotPhase("coarse")}
+                    className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 self-start sm:self-auto"
+                  >
+                    ← Back
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                  {fineReadings.map((r, i) => (
+                    <div key={i} className={`flex items-center gap-1 ${r.position === fineMaxPos ? "bg-green-100 rounded px-1" : ""}`}>
+                      <span className="text-xs text-gray-500 w-10 sm:w-12">{r.position}:</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="nA"
+                        value={r.reading}
+                        onChange={(e) => updateFineReading(i, e.target.value)}
+                        className="flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded"
+                      />
+                      {r.position === fineMaxPos && <span className="text-green-600 text-xs">★</span>}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <div className="text-xs text-gray-500">
+                    {fineMaxPos !== null ? `Sweet spot at ${fineMaxPos}mm` : "Enter readings to find sweet spot"}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={completeFinePhase}
+                    disabled={fineMaxPos === null}
+                    className="text-xs px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                  >
+                    Set Sweet Spot ✓
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Complete - show summary */}
+            {sweetSpotPhase === "complete" && (
+              <div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <div className="text-sm text-green-700">
+                    ✓ Sweet spot: <span className="font-semibold">{sweetSpotPosition} mm</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      initializeCoarsePositions();
+                    }}
+                    className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                  >
+                    Re-measure
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Manual sweet spot entry if not using determination */}
+        {!showSweetSpot && (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <label className="text-xs text-gray-500">Or enter known position:</label>
+            <input
+              type="number"
+              step="1"
+              placeholder="mm"
+              value={sweetSpotPosition}
+              onChange={(e) => setSweetSpotPosition(e.target.value)}
+              className="w-20 px-2 py-1 text-xs border border-gray-300 rounded"
+            />
+            <span className="text-xs text-gray-400">mm</span>
+          </div>
+        )}
+      </div>
+
+      {/* Chamber & Certificate Data (Baseline) */}
+      <div className="mb-3 p-2 bg-white rounded border border-gray-100">
+        <div className="text-xs font-medium text-gray-400 mb-2">Chamber & Certificate Data</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+          <div>
+            <label className="text-xs text-gray-500">Nsk (μGy·m²·h⁻¹·nA⁻¹)</label>
+            <input
+              type="number"
+              step="0.001"
+              placeholder="Chamber factor"
+              value={chamberNsk}
+              onChange={(e) => setChamberNsk(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">k_elec</label>
+            <input
+              type="number"
+              step="0.001"
+              placeholder="1.000"
+              value={electrometerFactor}
+              onChange={(e) => setElectrometerFactor(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+          <div>
+            <label className="text-xs text-gray-500">Cert SRAK (μGy·m²·h⁻¹)</label>
+            <input
+              type="number"
+              step="1"
+              placeholder="Certificate value"
+              value={certSRAK}
+              onChange={(e) => setCertSRAK(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Cert Date</label>
+            <input
+              type="date"
+              value={certDate}
+              onChange={(e) => setCertDate(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-gray-500">Ref Temp T₀ (°C)</label>
+            <input
+              type="number"
+              step="0.1"
+              placeholder="20"
+              value={refTemp}
+              onChange={(e) => setRefTemp(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Ref Pressure P₀ (kPa)</label>
+            <input
+              type="number"
+              step="0.001"
+              placeholder="101.325"
+              value={refPressure}
+              onChange={(e) => setRefPressure(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Measurement Inputs */}
+      <div className="mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
+          <div className="text-xs font-medium text-gray-400">Measurements at Sweet Spot</div>
+          {sweetSpotPosition && (
+            <div className="text-xs text-purple-600 font-medium">
+              Position: {sweetSpotPosition} mm
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          {readings.map((r, i) => (
+            <div key={i}>
+              <label className="text-xs text-gray-500">M{i + 1}</label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="nA"
+                value={r}
+                onChange={(e) => updateReading(i, e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-gray-500">Temp T (°C)</label>
+            <input
+              type="number"
+              step="0.1"
+              placeholder="Temp"
+              value={measuredTemp}
+              onChange={(e) => setMeasuredTemp(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Pressure P (kPa)</label>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Press"
+              value={measuredPressure}
+              onChange={(e) => setMeasuredPressure(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="p-2 sm:p-3 bg-blue-50 rounded border border-blue-100">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs sm:text-sm">
+          <div>Mean M: <span className="font-mono">{meanReading !== null ? `${meanReading.toFixed(2)} nA` : "--"}</span></div>
+          <div>k_TP: <span className="font-mono">{kTP !== null ? kTP.toFixed(4) : "--"}</span></div>
+          <div className="sm:col-span-1">Measured S_k: <span className="font-mono font-semibold text-blue-600 block sm:inline">{measuredSRAK !== null ? `${measuredSRAK.toFixed(1)}` : "--"}</span></div>
+          <div className="sm:col-span-1">Expected S_k: <span className="font-mono text-amber-600 block sm:inline">{decayedCert !== null ? `${decayedCert.toFixed(1)}` : "--"}</span></div>
+          <div className="col-span-1 sm:col-span-2 pt-1 border-t border-blue-200 mt-1">
+            <span className="font-medium">Difference:</span> <span className={`font-mono font-bold text-base ${deviation !== null && Math.abs(deviation) > 3 ? "text-red-600" : "text-green-600"}`}>
+              {deviation !== null ? `${deviation >= 0 ? "+" : ""}${deviation.toFixed(2)}%` : "--%"}
+            </span>
+            {daysElapsed !== null && <span className="text-xs text-gray-500 ml-2 block sm:inline">({daysElapsed.toFixed(0)}d since cal)</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // Calculator Factory - Returns appropriate calculator based on type
 // ============================================================================
 interface InlineCalculatorProps {
@@ -632,6 +1196,8 @@ export function InlineCalculator({ calculatorType, testId, tolerance, actionLeve
       return <TransitReproducibilityCalculator {...props} />;
     case "source_decay_check":
       return <SourceDecayCheckCalculator {...props} />;
+    case "srak_calculation":
+      return <SRAKCalculator {...props} />;
     default:
       return null;
   }

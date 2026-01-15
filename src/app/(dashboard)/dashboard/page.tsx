@@ -19,6 +19,18 @@ interface SetupStatus {
   isComplete: boolean;
 }
 
+interface BrachySource {
+  equipment_id: string;
+  equipment_name: string;
+  equipment_type: string;
+  source_serial?: string;
+  initial_activity?: number;
+  calibration_date?: string;
+  unit?: string;
+  current_activity?: number;
+  days_elapsed?: number;
+}
+
 interface DashboardData {
   organization: Organization | null;
   stats: DashboardStats;
@@ -30,6 +42,7 @@ interface DashboardData {
     status: string;
     equipment: { name: string; equipment_type: string } | null;
   }>;
+  brachySources: BrachySource[];
 }
 
 export default function DashboardPage() {
@@ -86,11 +99,12 @@ export default function DashboardPage() {
     );
   }
 
-  const { organization, stats, setupStatus, recentReports } = data || {
+  const { organization, stats, setupStatus, recentReports, brachySources } = data || {
     organization: null,
     stats: { equipmentCount: 0, dailyQACompleted: 0, dailyQATotal: 0, pendingReviews: 0, monthlyReportCount: 0 },
     setupStatus: { hasOrganization: false, hasEquipment: false, isComplete: false },
     recentReports: [],
+    brachySources: [],
   };
 
   return (
@@ -205,6 +219,75 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Brachytherapy Source Activity */}
+      {brachySources && brachySources.length > 0 && (
+        <div className="bg-gradient-to-r from-purple-50 to-amber-50 rounded-lg shadow p-4 sm:p-6 border border-purple-200">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+              </svg>
+            </div>
+            <h2 className="font-semibold text-purple-900">Brachytherapy Source Activity</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {brachySources.map((source) => (
+              <div key={source.equipment_id} className="bg-white rounded-lg p-3 sm:p-4 border border-purple-100 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-medium text-gray-900 truncate">{source.equipment_name}</h3>
+                    {source.source_serial && (
+                      <p className="text-xs text-gray-500 truncate">S/N: {source.source_serial}</p>
+                    )}
+                  </div>
+                  <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full whitespace-nowrap self-start">
+                    {source.equipment_type === "brachytherapy_hdr" ? "HDR" : "LDR"}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm text-gray-500">Current:</span>
+                    <span className="text-lg sm:text-xl font-bold text-amber-600">
+                      {source.current_activity?.toFixed(2)} {source.unit}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between text-xs sm:text-sm">
+                    <span className="text-gray-400">Initial:</span>
+                    <span className="text-gray-600">
+                      {source.initial_activity?.toFixed(2)} {source.unit}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-400 pt-1 border-t border-gray-100">
+                    <span>{source.days_elapsed} days elapsed</span>
+                    <span>{source.calibration_date && new Date(source.calibration_date).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Link
+              href="/calculators"
+              className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-purple-700 bg-white border border-purple-200 rounded-md hover:bg-purple-50 transition-colors"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              Open Calculators
+            </Link>
+            <Link
+              href="/qa"
+              className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              Daily QA
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Recent Activity & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
