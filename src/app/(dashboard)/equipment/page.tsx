@@ -457,6 +457,7 @@ function BaselineSettingsModal({
         const response = await fetch(`/api/equipment/${equipment.id}/baselines`);
         if (response.ok) {
           const data = await response.json();
+          console.log("Fetched baselines:", data.baselines);
           setBaselines(data.baselines || {});
 
           // Pre-populate based on equipment type
@@ -781,7 +782,26 @@ function BaselineSettingsModal({
         savePromises.push(saveBaseline("AM1", mlcData));
       }
 
-      await Promise.all(savePromises);
+      const results = await Promise.all(savePromises);
+
+      // Check for any failed saves
+      const failures = await Promise.all(
+        results.map(async (r, i) => {
+          if (!r.ok) {
+            const errorData = await r.json().catch(() => ({}));
+            console.error(`Save ${i} failed:`, r.status, errorData);
+            return true;
+          }
+          return false;
+        })
+      );
+
+      if (failures.some(f => f)) {
+        console.error("Some baselines failed to save");
+      } else {
+        console.log("All baselines saved successfully");
+      }
+
       onClose();
     } catch (err) {
       console.error("Error saving baselines:", err);
