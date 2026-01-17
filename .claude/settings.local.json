@@ -22,7 +22,8 @@
       "Bash(gh auth login:*)",
       "Bash(sudo apt update:*)",
       "Bash(sudo apt install:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

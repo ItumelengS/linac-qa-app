@@ -17,6 +17,22 @@ export type EquipmentType =
   | "imrt_vmat"
   | "radiation_protection";
 
+export type InstrumentType =
+  | "ion_chamber"
+  | "electrometer"
+  | "thermometer"
+  | "barometer"
+  | "hygrometer"
+  | "survey_meter"
+  | "well_chamber"
+  | "diode"
+  | "film"
+  | "mosfet"
+  | "diamond_detector"
+  | "scintillator"
+  | "phantom"
+  | "other";
+
 export type QAFrequency =
   | "daily"
   | "weekly"
@@ -101,6 +117,34 @@ export interface Equipment {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export interface Instrument {
+  id: string;
+  organization_id: string;
+  instrument_type: InstrumentType;
+  name: string;
+  manufacturer?: string;
+  model?: string;
+  serial_number?: string;
+  purchase_date?: string;
+  vendor?: string;
+  calibration_certificate?: string;
+  calibration_date?: string;
+  calibration_expiry_date?: string;
+  calibration_lab?: string;
+  calibration_factor?: number;
+  calibration_factor_unit?: string;
+  electrometer_correction?: number;
+  polarity_correction?: number;
+  recombination_correction?: number;
+  active: boolean;
+  location?: string;
+  notes?: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
 }
 
 export interface QATestDefinition {
@@ -431,4 +475,22 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   admin: "Administrator",
   physicist: "Medical Physicist",
   therapist: "Radiation Therapist",
+};
+
+// Instrument type display names
+export const INSTRUMENT_TYPE_LABELS: Record<InstrumentType, string> = {
+  ion_chamber: "Ion Chamber",
+  electrometer: "Electrometer",
+  thermometer: "Thermometer",
+  barometer: "Barometer",
+  hygrometer: "Hygrometer",
+  survey_meter: "Survey Meter",
+  well_chamber: "Well Chamber",
+  diode: "Diode Detector",
+  film: "Film Dosimeter",
+  mosfet: "MOSFET Detector",
+  diamond_detector: "Diamond Detector",
+  scintillator: "Scintillator",
+  phantom: "Phantom",
+  other: "Other",
 };
