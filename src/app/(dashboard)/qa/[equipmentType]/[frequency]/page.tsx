@@ -34,26 +34,65 @@ interface EnergyResult {
   status: QAStatus;
 }
 
-// Check if a test is energy-specific (output constancy)
-function isEnergySpecificTest(testId: string, description: string): "photon" | "electron" | "fff" | null {
+// Check if a test is energy-specific
+// Returns the energy type(s) this test should be expanded for
+function isEnergySpecificTest(testId: string, description: string): "photon" | "electron" | "fff" | "all" | null {
   const descLower = description.toLowerCase();
-  // Check for photon output constancy
+  const testIdUpper = testId.toUpperCase();
+
+  // Daily tests - specific to photon or electron
   if (descLower.includes("output constancy") && descLower.includes("photon")) {
     return "photon";
   }
-  // Check for electron output constancy
   if (descLower.includes("output constancy") && descLower.includes("electron")) {
     return "electron";
   }
-  // Check for FFF output constancy
   if (descLower.includes("output constancy") && (descLower.includes("fff") || descLower.includes("flattening filter free"))) {
     return "fff";
   }
+
+  // Monthly tests that should be per-energy (all energies)
+  // ML13: Beam flatness constancy
+  // ML14: Beam symmetry constancy
+  // ML15: Relative dosimetry constancy
+  if (testIdUpper === "ML13" || testIdUpper === "ML14" || testIdUpper === "ML15") {
+    return "all";
+  }
+  if (descLower.includes("flatness constancy") ||
+      descLower.includes("symmetry constancy") ||
+      descLower.includes("relative dosimetry constancy")) {
+    return "all";
+  }
+
+  // Quarterly tests
+  // QL1: Central axis depth dose reproducibility
+  if (testIdUpper === "QL1" || descLower.includes("depth dose reproducibility")) {
+    return "all";
+  }
+
+  // Annual tests that should be per-energy
+  // AL6: TRS-398 calibration
+  // AL7: Output factors (per energy)
+  // AL10: Output vs gantry angle
+  // AL11: Symmetry vs gantry angle
+  if (testIdUpper === "AL6" || descLower.includes("trs-398") || descLower.includes("trs 398")) {
+    return "all";
+  }
+  if (testIdUpper === "AL7" && descLower.includes("output factor")) {
+    return "all";
+  }
+  if (testIdUpper === "AL10" || (descLower.includes("output") && descLower.includes("gantry"))) {
+    return "all";
+  }
+  if (testIdUpper === "AL11" || (descLower.includes("symmetry") && descLower.includes("gantry"))) {
+    return "all";
+  }
+
   return null;
 }
 
 // Get energies from equipment based on type
-function getEnergiesForTest(equipment: Equipment, energyType: "photon" | "electron" | "fff"): string[] {
+function getEnergiesForTest(equipment: Equipment, energyType: "photon" | "electron" | "fff" | "all"): string[] {
   switch (energyType) {
     case "photon":
       return equipment.photon_energies || [];
@@ -61,6 +100,13 @@ function getEnergiesForTest(equipment: Equipment, energyType: "photon" | "electr
       return equipment.electron_energies || [];
     case "fff":
       return equipment.fff_energies || [];
+    case "all":
+      // Combine all energy types, with labels to distinguish
+      const allEnergies: string[] = [];
+      (equipment.photon_energies || []).forEach(e => allEnergies.push(e));
+      (equipment.electron_energies || []).forEach(e => allEnergies.push(e));
+      (equipment.fff_energies || []).forEach(e => allEnergies.push(`${e} FFF`));
+      return allEnergies;
     default:
       return [];
   }
@@ -421,13 +467,28 @@ function QAFormContent() {
               const energyType = isEnergySpecificTest(test.test_id, test.description);
               if (energyType && updatedEnergyResults[test.test_id]) {
                 updatedEnergyResults[test.test_id] = updatedEnergyResults[test.test_id].map(er => {
-                  // Look for baseline stored as OUTPUT_<energy> (e.g., OUTPUT_6MV, OUTPUT_9MeV)
-                  const baselineKey = `OUTPUT_${er.energy}`;
+                  // Normalize energy for key (remove spaces, handle FFF)
+                  const energyKey = er.energy.replace(/\s+/g, '_');
+
+                  // For daily output constancy (DL8, DL9), use OUTPUT_<energy>
+                  // For other tests, use <testId>_<energy>
+                  const isDailyOutput = test.test_id.toUpperCase().startsWith('DL');
+                  const baselineKey = isDailyOutput
+                    ? `OUTPUT_${energyKey}`
+                    : `${test.test_id}_${energyKey}`;
+
                   const energyBaseline = fetchedBaselines[baselineKey];
                   if (energyBaseline?.values?.reference_output !== undefined) {
                     return {
                       ...er,
                       baseline_value: energyBaseline.values.reference_output,
+                    };
+                  }
+                  // Also check for reference_value (used by some tests)
+                  if (energyBaseline?.values?.reference_value !== undefined) {
+                    return {
+                      ...er,
+                      baseline_value: energyBaseline.values.reference_value,
                     };
                   }
                   return er;
@@ -596,7 +657,16 @@ function QAFormContent() {
   const saveEnergyBaseline = async (testId: string, energy: string, referenceOutput: number) => {
     if (!equipment) return;
 
-    const baselineKey = `OUTPUT_${energy}`;
+    // Normalize energy for key (remove spaces, handle FFF)
+    const energyKey = energy.replace(/\s+/g, '_');
+
+    // For daily output constancy (DL8, DL9), use OUTPUT_<energy>
+    // For other tests, use <testId>_<energy>
+    const isDailyOutput = testId.toUpperCase().startsWith('DL');
+    const baselineKey = isDailyOutput
+      ? `OUTPUT_${energyKey}`
+      : `${testId}_${energyKey}`;
+
     try {
       const response = await fetch(`/api/equipment/${equipment.id}/baselines`, {
         method: "PUT",
@@ -1228,9 +1298,14 @@ function QAFormContent() {
                             const testEnergyResults = energyResults[test.test_id] || [];
 
                             if (energies.length === 0) {
+                              const energyLabel = energyType === "all"
+                                ? "photon or electron"
+                                : energyType === "fff"
+                                ? "FFF"
+                                : energyType;
                               return (
                                 <div className="text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-md">
-                                  No {energyType} energies configured for this equipment.
+                                  No {energyLabel} energies configured for this equipment.
                                   <a href={`/equipment`} className="ml-1 underline">Add energies in Equipment settings.</a>
                                 </div>
                               );
