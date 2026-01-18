@@ -13,6 +13,7 @@ import {
 
 // Define which frequencies are available for each equipment type
 const EQUIPMENT_FREQUENCIES: Record<EquipmentType, QAFrequency[]> = {
+  // Radiation Therapy
   linac: ["daily", "monthly", "quarterly", "annual"],
   bore_linac: ["daily", "monthly", "quarterly", "annual"],
   linac_srs: ["daily", "patient_specific", "annual"],
@@ -30,6 +31,25 @@ const EQUIPMENT_FREQUENCIES: Record<EquipmentType, QAFrequency[]> = {
   record_verify: ["weekly", "patient_specific", "commissioning"],
   imrt_vmat: ["commissioning"],
   radiation_protection: ["daily", "weekly", "monthly", "annual", "biennial"],
+  // Nuclear Medicine
+  gamma_camera: ["daily", "weekly", "quarterly", "annual"],
+  spect: ["daily", "weekly", "quarterly", "annual"],
+  spect_ct: ["daily", "weekly", "quarterly", "annual"],
+  pet: ["daily", "weekly", "quarterly", "annual"],
+  pet_ct: ["daily", "weekly", "quarterly", "annual"],
+  pet_mri: ["daily", "weekly", "quarterly", "annual"],
+  dose_calibrator: ["daily", "quarterly", "annual"],
+  thyroid_uptake: ["daily", "quarterly", "annual"],
+  // Diagnostic Radiology
+  xray_general: ["daily", "monthly", "annual"],
+  fluoroscopy: ["daily", "monthly", "annual"],
+  mammography: ["daily", "weekly", "monthly", "annual"],
+  ct_diagnostic: ["daily", "monthly", "annual"],
+  mri: ["daily", "weekly", "monthly", "annual"],
+  dental_xray: ["monthly", "annual"],
+  c_arm: ["daily", "monthly", "annual"],
+  dexa: ["daily", "monthly", "annual"],
+  angiography: ["daily", "monthly", "annual"],
 };
 
 export default function QAPage() {

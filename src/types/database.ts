@@ -1,4 +1,5 @@
 export type EquipmentType =
+  // Radiation Therapy
   | "linac"
   | "bore_linac"
   | "linac_srs"
@@ -15,7 +16,26 @@ export type EquipmentType =
   | "epid"
   | "record_verify"
   | "imrt_vmat"
-  | "radiation_protection";
+  | "radiation_protection"
+  // Nuclear Medicine
+  | "gamma_camera"
+  | "spect"
+  | "spect_ct"
+  | "pet"
+  | "pet_ct"
+  | "pet_mri"
+  | "dose_calibrator"
+  | "thyroid_uptake"
+  // Diagnostic Radiology
+  | "xray_general"
+  | "fluoroscopy"
+  | "mammography"
+  | "ct_diagnostic"
+  | "mri"
+  | "dental_xray"
+  | "c_arm"
+  | "dexa"
+  | "angiography";
 
 export type InstrumentType =
   | "ion_chamber"
@@ -437,6 +457,7 @@ export interface EquipmentBaseline {
 
 // Equipment type display names
 export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
+  // Radiation Therapy
   linac: "Linear Accelerator",
   bore_linac: "Bore-based Linac (Halcyon/TomoTherapy/MR-Linac)",
   linac_srs: "Linac-based SRS/SRT",
@@ -454,6 +475,25 @@ export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   record_verify: "Record & Verify System",
   imrt_vmat: "IMRT/VMAT",
   radiation_protection: "Radiation Protection",
+  // Nuclear Medicine
+  gamma_camera: "Gamma Camera (Planar)",
+  spect: "SPECT",
+  spect_ct: "SPECT/CT",
+  pet: "PET",
+  pet_ct: "PET/CT",
+  pet_mri: "PET/MRI",
+  dose_calibrator: "Dose Calibrator",
+  thyroid_uptake: "Thyroid Uptake System",
+  // Diagnostic Radiology
+  xray_general: "General X-ray",
+  fluoroscopy: "Fluoroscopy",
+  mammography: "Mammography",
+  ct_diagnostic: "CT Scanner (Diagnostic)",
+  mri: "MRI",
+  dental_xray: "Dental X-ray",
+  c_arm: "C-Arm",
+  dexa: "Bone Densitometer (DEXA)",
+  angiography: "Angiography",
 };
 
 // Frequency display names

@@ -31,7 +31,50 @@ import {
   MULinearityBaseline,
 } from "@/types/database";
 
+// Grouped equipment types for organized dropdown
+const EQUIPMENT_TYPES_GROUPED = {
+  "Radiation Therapy": [
+    "linac",
+    "bore_linac",
+    "linac_srs",
+    "cobalt60",
+    "ct_simulator",
+    "conventional_simulator",
+    "tps",
+    "brachytherapy_hdr",
+    "brachytherapy_ldr",
+    "kilovoltage",
+    "kilovoltage_intraop",
+    "gamma_knife",
+    "mlc",
+    "epid",
+    "record_verify",
+  ],
+  "Nuclear Medicine": [
+    "gamma_camera",
+    "spect",
+    "spect_ct",
+    "pet",
+    "pet_ct",
+    "pet_mri",
+    "dose_calibrator",
+    "thyroid_uptake",
+  ],
+  "Diagnostic Radiology": [
+    "xray_general",
+    "fluoroscopy",
+    "mammography",
+    "ct_diagnostic",
+    "mri",
+    "dental_xray",
+    "c_arm",
+    "dexa",
+    "angiography",
+  ],
+} as const;
+
 const EQUIPMENT_TYPES: EquipmentType[] = [
+  // Radiation Therapy
   "linac",
   "bore_linac",
   "linac_srs",
@@ -47,10 +90,30 @@ const EQUIPMENT_TYPES: EquipmentType[] = [
   "mlc",
   "epid",
   "record_verify",
+  // Nuclear Medicine
+  "gamma_camera",
+  "spect",
+  "spect_ct",
+  "pet",
+  "pet_ct",
+  "pet_mri",
+  "dose_calibrator",
+  "thyroid_uptake",
+  // Diagnostic Radiology
+  "xray_general",
+  "fluoroscopy",
+  "mammography",
+  "ct_diagnostic",
+  "mri",
+  "dental_xray",
+  "c_arm",
+  "dexa",
+  "angiography",
 ];
 
 // Helper to determine equipment category for baseline UI
 function getEquipmentCategory(type: EquipmentType): string {
+  // Radiation Therapy
   if (type === "brachytherapy_hdr" || type === "brachytherapy_ldr") return "brachytherapy";
   if (type === "linac" || type === "bore_linac" || type === "linac_srs") return "linac";
   if (type === "cobalt60") return "cobalt60";
@@ -58,6 +121,19 @@ function getEquipmentCategory(type: EquipmentType): string {
   if (type === "gamma_knife") return "gamma_knife";
   if (type === "mlc") return "mlc";
   if (type === "kilovoltage" || type === "kilovoltage_intraop") return "kilovoltage";
+  // Nuclear Medicine
+  if (type === "gamma_camera" || type === "spect") return "gamma_camera";
+  if (type === "spect_ct") return "spect_ct";
+  if (type === "pet" || type === "pet_ct" || type === "pet_mri") return "pet";
+  if (type === "dose_calibrator") return "dose_calibrator";
+  if (type === "thyroid_uptake") return "thyroid_uptake";
+  // Diagnostic Radiology
+  if (type === "xray_general" || type === "dental_xray") return "xray";
+  if (type === "fluoroscopy" || type === "c_arm" || type === "angiography") return "fluoroscopy";
+  if (type === "mammography") return "mammography";
+  if (type === "ct_diagnostic") return "ct_diagnostic";
+  if (type === "mri") return "mri";
+  if (type === "dexa") return "dexa";
   return "other";
 }
 
@@ -179,10 +255,14 @@ function EditEquipmentModal({
                 required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               >
-                {EQUIPMENT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {EQUIPMENT_TYPE_LABELS[type]}
-                  </option>
+                {Object.entries(EQUIPMENT_TYPES_GROUPED).map(([group, types]) => (
+                  <optgroup key={group} label={group}>
+                    {types.map((type) => (
+                      <option key={type} value={type}>
+                        {EQUIPMENT_TYPE_LABELS[type as EquipmentType]}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -196,7 +276,7 @@ function EditEquipmentModal({
                 value={formData.manufacturer}
                 onChange={(e) => setFormData((prev) => ({ ...prev, manufacturer: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="e.g., Varian, Elekta"
+                placeholder="e.g., Varian, Elekta, Siemens"
               />
             </div>
 
@@ -1929,10 +2009,14 @@ export default function EquipmentPage() {
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  {EQUIPMENT_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {EQUIPMENT_TYPE_LABELS[type]}
-                    </option>
+                  {Object.entries(EQUIPMENT_TYPES_GROUPED).map(([group, types]) => (
+                    <optgroup key={group} label={group}>
+                      {types.map((type) => (
+                        <option key={type} value={type}>
+                          {EQUIPMENT_TYPE_LABELS[type as EquipmentType]}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </div>
@@ -1946,7 +2030,7 @@ export default function EquipmentPage() {
                   value={formData.manufacturer}
                   onChange={(e) => setFormData((prev) => ({ ...prev, manufacturer: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="e.g., Varian, Elekta"
+                  placeholder="e.g., Varian, Elekta, Siemens"
                 />
               </div>
 

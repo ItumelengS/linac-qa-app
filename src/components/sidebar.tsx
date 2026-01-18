@@ -140,7 +140,7 @@ export function Sidebar({ profile }: SidebarProps) {
     <>
       {/* Mobile menu button */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between bg-white border-b px-4 h-16">
-        <span className="font-bold text-lg">SASQART QA</span>
+        <span className="font-bold text-lg">MedPhys QA</span>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="p-2 rounded-md text-gray-600 hover:bg-gray-100"
@@ -176,8 +176,7 @@ export function Sidebar({ profile }: SidebarProps) {
           {/* Logo */}
           <div className="flex items-center h-16 px-4 border-b">
             <Link href="/dashboard" className="flex items-center">
-              <span className="font-bold text-xl text-primary">SASQART</span>
-              <span className="ml-2 text-sm text-gray-500">QA System</span>
+              <span className="font-bold text-lg text-primary">MedPhys QA</span>
             </Link>
           </div>
 
