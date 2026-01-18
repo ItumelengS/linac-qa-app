@@ -1,0 +1,898 @@
+{
+  "metadata": {
+    "source": "IAEA Human Health Series No. 36 - SPECT/CT Atlas of Quality Control and Image Artefacts",
+    "references": [
+      "IAEA TECDOC (Ref. 45)",
+      "AAPM TG177 (Ref. 46)",
+      "NEMA NU 1-2018 (Ref. 47)",
+      "EANM Guidelines (Refs. 48, 49)"
+    ],
+    "version": "1.0",
+    "created": "2025-01-18"
+  },
+  "frequency_codes": {
+    "A": "Acceptance (at installation and after major service)",
+    "D": "Daily",
+    "W": "Weekly",
+    "M": "Monthly",
+    "Q": "Quarterly",
+    "HY": "Semi-annual (every 6 months)",
+    "Y": "Annual (yearly)"
+  },
+  "tests": {
+    "system_checks": [
+      {
+        "id": "SYS001",
+        "name": "Physical Inspection",
+        "frequency": [
+          "A",
+          "Y"
+        ],
+        "tolerance": {
+          "type": "pass_fail",
+          "criteria": "Visual Pass/Fail"
+        },
+        "method": "Visual inspection of all components",
+        "equipment": "None",
+        "pass_criteria": "No visible damage, all components functional"
+      },
+      {
+        "id": "SYS002",
+        "name": "Safety Interlocks",
+        "frequency": [
+          "A",
+          "Y"
+        ],
+        "tolerance": {
+          "type": "functional",
+          "criteria": "All functional"
+        },
+        "method": "Test all safety interlocks",
+        "equipment": "None",
+        "pass_criteria": "All interlocks functional"
+      },
+      {
+        "id": "SYS003",
+        "name": "Collimator and Detector Head Mountings",
+        "frequency": [
+          "D"
+        ],
+        "tolerance": {
+          "type": "pass_fail",
+          "criteria": "Secure attachment"
+        },
+        "method": "Visual and physical check",
+        "equipment": "None",
+        "pass_criteria": "Collimator properly seated and locked"
+      },
+      {
+        "id": "SYS004",
+        "name": "Detector Head Shielding Leakage",
+        "frequency": [
+          "A",
+          "Y"
+        ],
+        "tolerance": {
+          "type": "percentage",
+          "value": 0.01,
+          "operator": "<",
+          "unit": "%"
+        },
+        "method": "Point source test",
+        "equipment": "Point source ~370 MBq",
+        "pass_criteria": "Leakage counts < 0.01% of primary"
+      },
+      {
+        "id": "SYS005",
+        "name": "Multiple Window Spatial Registration",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "numeric",
+          "value": 2.0,
+          "operator": "<=",
+          "unit": "mm"
+        },
+        "method": "Dual-isotope phantom",
+        "equipment": "Multi-isotope phantom",
+        "pass_criteria": "Misregistration \u2264 2.0 mm"
+      }
+    ],
+    "daily_checks": [
+      {
+        "id": "DAY001",
+        "name": "Energy Calibration (Peaking)",
+        "frequency": [
+          "D",
+          "W"
+        ],
+        "tolerance": {
+          "type": "conditional",
+          "conditions": [
+            {
+              "isotopes": [
+                "Tc-99m",
+                "Co-57"
+              ],
+              "value": 3,
+              "operator": "<=",
+              "unit": "%"
+            },
+            {
+              "isotopes": [
+                "other"
+              ],
+              "value": 5,
+              "operator": "<=",
+              "unit": "%"
+            }
+          ]
+        },
+        "method": "Point source spectrum",
+        "equipment": "Point source ~37 MBq",
+        "pass_criteria": "Peak within \u00b13% for Tc-99m/Co-57, \u00b15% for others"
+      },
+      {
+        "id": "DAY002",
+        "name": "Background Count Rate",
+        "frequency": [
+          "D"
+        ],
+        "tolerance": {
+          "type": "percentage_of_baseline",
+          "value": 20,
+          "operator": "<",
+          "unit": "%"
+        },
+        "method": "Acquire with no source",
+        "equipment": "None",
+        "pass_criteria": "Background < baseline + 20%"
+      },
+      {
+        "id": "DAY003",
+        "name": "Flood Field Uniformity (Visual)",
+        "frequency": [
+          "D"
+        ],
+        "tolerance": {
+          "type": "visual",
+          "criteria": "No visible defects"
+        },
+        "method": "Flood acquisition",
+        "equipment": "Co-57 sheet source or point source",
+        "pass_criteria": "Uniform appearance, no cold/hot spots"
+      }
+    ],
+    "planar_tests": [
+      {
+        "id": "PLN001",
+        "name": "Intrinsic Uniformity Tc-99m (Integral)",
+        "frequency": [
+          "A",
+          "W",
+          "M"
+        ],
+        "tolerance": {
+          "type": "multi_region",
+          "regions": [
+            {
+              "region": "CFOV",
+              "value": 2.5,
+              "operator": "<=",
+              "unit": "%"
+            },
+            {
+              "region": "UFOV",
+              "value": 3.0,
+              "operator": "<=",
+              "unit": "%"
+            }
+          ]
+        },
+        "method": "Point source flood",
+        "equipment": "Point source ~37 MBq at 5\u00d7FOV distance",
+        "pass_criteria": "IU(CFOV) \u2264 2.5%, IU(UFOV) \u2264 3.0%",
+        "acquisition": {
+          "counts": "5-10 million",
+          "matrix": "256x256"
+        }
+      },
+      {
+        "id": "PLN002",
+        "name": "Intrinsic Uniformity Other Isotopes (Integral)",
+        "frequency": [
+          "HY",
+          "Q"
+        ],
+        "tolerance": {
+          "type": "multi_region",
+          "regions": [
+            {
+              "region": "CFOV",
+              "value": 3.5,
+              "operator": "<=",
+              "unit": "%"
+            },
+            {
+              "region": "UFOV",
+              "value": 4.0,
+              "operator": "<=",
+              "unit": "%"
+            }
+          ]
+        },
+        "method": "Point source flood",
+        "equipment": "Appropriate point source at 5\u00d7FOV distance",
+        "pass_criteria": "IU(CFOV) \u2264 3.5%, IU(UFOV) \u2264 4.0%"
+      },
+      {
+        "id": "PLN003",
+        "name": "Differential Uniformity Tc-99m",
+        "frequency": [
+          "A",
+          "W",
+          "M"
+        ],
+        "tolerance": {
+          "type": "multi_region",
+          "regions": [
+            {
+              "region": "CFOV",
+              "value": 2.0,
+              "operator": "<=",
+              "unit": "%"
+            },
+            {
+              "region": "UFOV",
+              "value": 2.5,
+              "operator": "<=",
+              "unit": "%"
+            }
+          ]
+        },
+        "method": "Point source flood",
+        "equipment": "Point source ~37 MBq at 5\u00d7FOV distance",
+        "pass_criteria": "DU(CFOV) \u2264 2.0%, DU(UFOV) \u2264 2.5%"
+      },
+      {
+        "id": "PLN004",
+        "name": "Extrinsic (System) Uniformity",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "multi_region",
+          "regions": [
+            {
+              "region": "CFOV",
+              "value": 3.0,
+              "operator": "<=",
+              "unit": "%"
+            },
+            {
+              "region": "UFOV",
+              "value": 4.0,
+              "operator": "<=",
+              "unit": "%"
+            }
+          ]
+        },
+        "method": "Sheet source flood with collimator",
+        "equipment": "Co-57 sheet source",
+        "pass_criteria": "IU(CFOV) \u2264 3.0%, IU(UFOV) \u2264 4.0%"
+      },
+      {
+        "id": "PLN005",
+        "name": "Intrinsic Spatial Resolution",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "numeric",
+          "value": 3.5,
+          "operator": "<=",
+          "unit": "mm",
+          "note": "typical, varies by system"
+        },
+        "method": "Bar phantom or line sources",
+        "equipment": "Bar phantom, line sources",
+        "pass_criteria": "FWHM meets manufacturer specification"
+      },
+      {
+        "id": "PLN006",
+        "name": "Intrinsic Spatial Linearity",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "multi_parameter",
+          "parameters": [
+            {
+              "name": "absolute",
+              "value": 1.0,
+              "operator": "<",
+              "unit": "mm"
+            },
+            {
+              "name": "differential",
+              "value": 0.5,
+              "operator": "<",
+              "unit": "mm"
+            }
+          ]
+        },
+        "method": "Bar phantom or orthogonal hole pattern",
+        "equipment": "Orthogonal hole phantom",
+        "pass_criteria": "Absolute < 1.0 mm, Differential < 0.5 mm"
+      },
+      {
+        "id": "PLN007",
+        "name": "Crystal Hydration Test",
+        "frequency": [
+          "HY"
+        ],
+        "tolerance": {
+          "type": "visual",
+          "criteria": "No hydration spots visible"
+        },
+        "method": "Off-peak flood images (\u00b110% off-peak)",
+        "equipment": "Point source",
+        "pass_criteria": "No cold spots in off-peak images"
+      },
+      {
+        "id": "PLN008",
+        "name": "Energy Resolution",
+        "frequency": [
+          "A",
+          "Y"
+        ],
+        "tolerance": {
+          "type": "percentage",
+          "value": 10,
+          "operator": "<=",
+          "unit": "%",
+          "isotope": "Tc-99m"
+        },
+        "method": "Energy spectrum analysis",
+        "equipment": "Point source ~37 MBq",
+        "pass_criteria": "FWHM/peak energy \u00d7 100 \u2264 10%"
+      },
+      {
+        "id": "PLN009",
+        "name": "System Planar Sensitivity",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "percentage_of_baseline",
+          "value": 5,
+          "operator": "<=",
+          "unit": "%"
+        },
+        "method": "Point source at fixed distance",
+        "equipment": "Calibrated source",
+        "pass_criteria": "Within \u00b15% of baseline value"
+      },
+      {
+        "id": "PLN010",
+        "name": "Count Rate Performance",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "manufacturer_spec",
+          "criteria": "Meets specification"
+        },
+        "method": "High activity source measurements",
+        "equipment": "High activity source",
+        "pass_criteria": "Max count rate and dead time within spec"
+      }
+    ],
+    "spect_tests": [
+      {
+        "id": "SPT001",
+        "name": "Centre of Rotation (COR)",
+        "frequency": [
+          "A",
+          "W",
+          "M"
+        ],
+        "tolerance": {
+          "type": "numeric",
+          "value": 0.5,
+          "operator": "<",
+          "unit": "pixel",
+          "note": "typical, manufacturer-dependent"
+        },
+        "method": "Point source SPECT acquisition",
+        "equipment": "Point sources at known positions",
+        "pass_criteria": "COR offset within manufacturer tolerance"
+      },
+      {
+        "id": "SPT002",
+        "name": "Multiple Head Registration (MHR)",
+        "frequency": [
+          "A",
+          "W",
+          "M"
+        ],
+        "tolerance": {
+          "type": "numeric",
+          "value": 1.0,
+          "operator": "<",
+          "unit": "pixel"
+        },
+        "method": "Point source SPECT acquisition",
+        "equipment": "Point sources",
+        "pass_criteria": "Head-to-head registration within tolerance"
+      },
+      {
+        "id": "SPT003",
+        "name": "Pixel Size Accuracy",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "numeric",
+          "value": 1.0,
+          "operator": "<=",
+          "unit": "mm"
+        },
+        "method": "Known distance measurement",
+        "equipment": "Point/line sources at known distance (\u226510cm)",
+        "pass_criteria": "Measured pixel size within \u00b11mm of actual"
+      },
+      {
+        "id": "SPT004",
+        "name": "SPECT Uniformity",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "multi_criteria",
+          "criteria": [
+            {
+              "type": "visual",
+              "description": "No ring artefacts"
+            },
+            {
+              "type": "numeric",
+              "value": 5,
+              "operator": "<=",
+              "unit": "%",
+              "description": "Non-uniformity"
+            }
+          ]
+        },
+        "method": "Cylindrical phantom SPECT",
+        "equipment": "Jaszczak phantom (~370 MBq Tc-99m)",
+        "pass_criteria": "Uniform appearance, no ring artefacts",
+        "acquisition": {
+          "views": 128,
+          "matrix": "128x128"
+        }
+      },
+      {
+        "id": "SPT005",
+        "name": "SPECT Resolution in Air",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "numeric",
+          "value_range": [
+            8,
+            12
+          ],
+          "unit": "mm",
+          "note": "typical range, system-dependent"
+        },
+        "method": "Point source SPECT in air",
+        "equipment": "Point sources",
+        "pass_criteria": "FWHM meets manufacturer specification",
+        "measures": [
+          "radial",
+          "tangential",
+          "axial"
+        ]
+      },
+      {
+        "id": "SPT006",
+        "name": "SPECT Resolution with Scatter",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "visual_assessment",
+          "criteria": "Compare to baseline"
+        },
+        "method": "Line sources in water phantom or rod phantom",
+        "equipment": "Jaszczak phantom with rods section",
+        "pass_criteria": "Smallest visible rod section noted and compared to baseline"
+      },
+      {
+        "id": "SPT007",
+        "name": "SPECT Image Contrast",
+        "frequency": [
+          "A",
+          "Q",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "visual_assessment",
+          "criteria": "Smallest visible sphere noted"
+        },
+        "method": "Phantom with cold spheres",
+        "equipment": "Jaszczak phantom with sphere section",
+        "pass_criteria": "Typically 15.9mm sphere visible; compare to baseline"
+      },
+      {
+        "id": "SPT008",
+        "name": "Slice Thickness",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "percentage_of_expected",
+          "value": 20,
+          "operator": "<=",
+          "unit": "%"
+        },
+        "method": "Point source axial profile analysis",
+        "equipment": "Point source",
+        "pass_criteria": "FWHM within \u00b120% of expected slice thickness",
+        "conditions": {
+          "radius_of_rotation": "15 cm or smallest possible"
+        }
+      },
+      {
+        "id": "SPT009",
+        "name": "System Volume Sensitivity",
+        "frequency": [
+          "A"
+        ],
+        "tolerance": {
+          "type": "baseline",
+          "criteria": "Record baseline value"
+        },
+        "method": "Cylindrical phantom SPECT per NEMA",
+        "equipment": "20cm diameter cylinder with known activity",
+        "pass_criteria": "Consistent with baseline",
+        "acquisition": {
+          "views": "120-128",
+          "time_per_view": "10s"
+        }
+      },
+      {
+        "id": "SPT010",
+        "name": "Detector-to-Detector Sensitivity",
+        "frequency": [
+          "A"
+        ],
+        "tolerance": {
+          "type": "percentage",
+          "value": 5,
+          "operator": "<",
+          "unit": "%"
+        },
+        "method": "Compare flood counts between heads",
+        "equipment": "Flood source",
+        "pass_criteria": "Sensitivity difference between heads < 5%"
+      },
+      {
+        "id": "SPT011",
+        "name": "Sensitivity/Uniformity with Rotation",
+        "frequency": [
+          "A"
+        ],
+        "tolerance": {
+          "type": "percentage",
+          "value": 1,
+          "operator": "<=",
+          "unit": "%"
+        },
+        "method": "Flood source SPECT at multiple speeds",
+        "equipment": "Flood source on collimator face (~185 MBq)",
+        "pass_criteria": "Count rate variation \u2264 1% across angles"
+      }
+    ],
+    "ct_tests": [
+      {
+        "id": "CT001",
+        "name": "Tube Warm-up",
+        "frequency": [
+          "D"
+        ],
+        "tolerance": {
+          "type": "procedure_complete",
+          "criteria": "Completed successfully"
+        },
+        "method": "Manufacturer protocol",
+        "equipment": "None",
+        "pass_criteria": "Warm-up completed without errors",
+        "duration": "~1 minute"
+      },
+      {
+        "id": "CT002",
+        "name": "Air Calibration",
+        "frequency": [
+          "D"
+        ],
+        "tolerance": {
+          "type": "procedure_complete",
+          "criteria": "All calibrations pass"
+        },
+        "method": "Manufacturer protocol",
+        "equipment": "None",
+        "pass_criteria": "All calibrations completed successfully",
+        "duration": "20-30 minutes"
+      },
+      {
+        "id": "CT003",
+        "name": "CT Number Accuracy - Water",
+        "frequency": [
+          "D",
+          "M"
+        ],
+        "tolerance": {
+          "type": "numeric_range",
+          "nominal": 0,
+          "range": 5,
+          "unit": "HU"
+        },
+        "method": "Water phantom ROI measurement",
+        "equipment": "CT QC phantom (water section)",
+        "pass_criteria": "Mean HU = 0 \u00b1 5 HU"
+      },
+      {
+        "id": "CT004",
+        "name": "CT Number Accuracy - Air",
+        "frequency": [
+          "A",
+          "M"
+        ],
+        "tolerance": {
+          "type": "numeric_range",
+          "nominal": -1000,
+          "range": 10,
+          "unit": "HU"
+        },
+        "method": "Air region ROI measurement",
+        "equipment": "CT QC phantom (air insert)",
+        "pass_criteria": "Mean HU = -1000 \u00b1 10 HU"
+      },
+      {
+        "id": "CT005",
+        "name": "CT Number Accuracy - Acrylic/Plastic",
+        "frequency": [
+          "A",
+          "M"
+        ],
+        "tolerance": {
+          "type": "numeric_range",
+          "nominal": 120,
+          "range": 10,
+          "unit": "HU",
+          "note": "material-dependent"
+        },
+        "method": "Acrylic insert ROI measurement",
+        "equipment": "CT QC phantom (acrylic insert)",
+        "pass_criteria": "Within expected range for material"
+      },
+      {
+        "id": "CT006",
+        "name": "CT Number Uniformity",
+        "frequency": [
+          "D"
+        ],
+        "tolerance": {
+          "type": "numeric",
+          "value": 5,
+          "operator": "<=",
+          "unit": "HU"
+        },
+        "method": "Water phantom multi-ROI measurement",
+        "equipment": "CT QC phantom",
+        "pass_criteria": "Centre-to-periphery difference \u2264 5 HU",
+        "roi_positions": [
+          "centre",
+          "12 o'clock",
+          "3 o'clock",
+          "6 o'clock",
+          "9 o'clock"
+        ]
+      },
+      {
+        "id": "CT007",
+        "name": "CT Image Noise",
+        "frequency": [
+          "D"
+        ],
+        "tolerance": {
+          "type": "percentage_of_baseline",
+          "value": 20,
+          "operator": "<=",
+          "unit": "%"
+        },
+        "method": "Water phantom ROI standard deviation",
+        "equipment": "CT QC phantom",
+        "pass_criteria": "SD within \u00b120% of baseline",
+        "note": "Dependent on kV, mA, slice thickness"
+      },
+      {
+        "id": "CT008",
+        "name": "CT Spatial Resolution (High Contrast)",
+        "frequency": [
+          "A",
+          "Y"
+        ],
+        "tolerance": {
+          "type": "manufacturer_spec",
+          "typical_range": [
+            0.5,
+            1.0
+          ],
+          "unit": "lp/mm"
+        },
+        "method": "Resolution insert analysis",
+        "equipment": "CT QC phantom (resolution section)",
+        "pass_criteria": "Line pairs resolved per manufacturer spec"
+      },
+      {
+        "id": "CT009",
+        "name": "CT Low Contrast Detectability",
+        "frequency": [
+          "A",
+          "Y"
+        ],
+        "tolerance": {
+          "type": "manufacturer_spec",
+          "criteria": "Meets specification"
+        },
+        "method": "Low contrast insert analysis",
+        "equipment": "CT QC phantom",
+        "pass_criteria": "Smallest low contrast object visible"
+      },
+      {
+        "id": "CT010",
+        "name": "CT Slice Thickness",
+        "frequency": [
+          "A",
+          "Y"
+        ],
+        "tolerance": {
+          "type": "numeric",
+          "value": 1,
+          "operator": "<=",
+          "unit": "mm"
+        },
+        "method": "Ramp or bead phantom",
+        "equipment": "CT QC phantom (slice thickness section)",
+        "pass_criteria": "Measured thickness within \u00b11mm of nominal"
+      },
+      {
+        "id": "CT011",
+        "name": "CT Artefact Evaluation",
+        "frequency": [
+          "D"
+        ],
+        "tolerance": {
+          "type": "visual",
+          "criteria": "No significant artefacts"
+        },
+        "method": "Visual inspection of phantom images",
+        "equipment": "CT QC phantom",
+        "pass_criteria": "No rings, streaks, or other artefacts visible"
+      },
+      {
+        "id": "CT012",
+        "name": "CT Dose Assessment (CTDI)",
+        "frequency": [
+          "A",
+          "Y"
+        ],
+        "tolerance": {
+          "type": "percentage_of_displayed",
+          "value": 20,
+          "operator": "<=",
+          "unit": "%"
+        },
+        "method": "Ion chamber measurement in CTDI phantom",
+        "equipment": "CTDI phantom + calibrated ionization chamber",
+        "pass_criteria": "Measured CTDI within \u00b120% of console display"
+      }
+    ],
+    "spect_ct_hybrid_tests": [
+      {
+        "id": "HYB001",
+        "name": "SPECT/CT Spatial Registration",
+        "frequency": [
+          "A",
+          "M",
+          "Y"
+        ],
+        "tolerance": {
+          "type": "numeric",
+          "value": 1,
+          "operator": "<",
+          "unit": "SPECT pixel",
+          "typical_mm": 5
+        },
+        "method": "Registration phantom or point sources",
+        "equipment": "Manufacturer registration phantom or point sources visible on both modalities",
+        "pass_criteria": "Misalignment < 1 SPECT pixel (typically < 5mm)",
+        "conditions": [
+          "Test with no table load",
+          "Test with >50kg table load"
+        ]
+      },
+      {
+        "id": "HYB002",
+        "name": "SPECT/CT Image Quality",
+        "frequency": [
+          "A",
+          "Q"
+        ],
+        "tolerance": {
+          "type": "visual_assessment",
+          "criteria": "Meets baseline"
+        },
+        "method": "Performance phantom with CT-based attenuation correction",
+        "equipment": "Jaszczak phantom (~740 MBq Tc-99m)",
+        "pass_criteria": "Uniformity, resolution, contrast acceptable with CTAC",
+        "reconstruction": "Clinical parameters with all corrections applied"
+      },
+      {
+        "id": "HYB003",
+        "name": "CT Attenuation Correction Accuracy",
+        "frequency": [
+          "A",
+          "HY"
+        ],
+        "tolerance": {
+          "type": "percentage",
+          "value": 5,
+          "operator": "<",
+          "unit": "%"
+        },
+        "method": "Quantitative phantom study",
+        "equipment": "Fillable phantom with calibrated activity",
+        "pass_criteria": "Quantification error < 5%"
+      }
+    ]
+  },
+  "formulas": {
+    "integral_uniformity": {
+      "formula": "IU = ((max - min) / (max + min)) \u00d7 100%",
+      "description": "Maximum and minimum pixel counts in region of interest"
+    },
+    "differential_uniformity": {
+      "formula": "DU = ((high - low) / (high + low)) \u00d7 100%",
+      "description": "Maximum difference in any 5 contiguous pixels"
+    },
+    "energy_resolution": {
+      "formula": "ER = (FWHM / E_peak) \u00d7 100%",
+      "description": "Full width at half maximum divided by peak energy"
+    },
+    "hounsfield_unit": {
+      "formula": "HU = ((\u03bc - \u03bc_water) / \u03bc_water) \u00d7 1000",
+      "description": "Linear attenuation coefficient scaling"
+    },
+    "ctdi_weighted": {
+      "formula": "CTDIw = (1/3)\u00d7CTDI_center + (2/3)\u00d7CTDI_periphery",
+      "description": "Weighted CT dose index"
+    }
+  }
+}

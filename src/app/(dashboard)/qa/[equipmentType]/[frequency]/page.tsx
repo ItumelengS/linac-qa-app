@@ -25,6 +25,47 @@ interface TestResult {
   notes?: string;
 }
 
+// Energy-specific result for output constancy tests
+interface EnergyResult {
+  energy: string;
+  measurement?: number;
+  baseline_value?: number;
+  deviation?: number;
+  status: QAStatus;
+}
+
+// Check if a test is energy-specific (output constancy)
+function isEnergySpecificTest(testId: string, description: string): "photon" | "electron" | "fff" | null {
+  const descLower = description.toLowerCase();
+  // Check for photon output constancy
+  if (descLower.includes("output constancy") && descLower.includes("photon")) {
+    return "photon";
+  }
+  // Check for electron output constancy
+  if (descLower.includes("output constancy") && descLower.includes("electron")) {
+    return "electron";
+  }
+  // Check for FFF output constancy
+  if (descLower.includes("output constancy") && (descLower.includes("fff") || descLower.includes("flattening filter free"))) {
+    return "fff";
+  }
+  return null;
+}
+
+// Get energies from equipment based on type
+function getEnergiesForTest(equipment: Equipment, energyType: "photon" | "electron" | "fff"): string[] {
+  switch (energyType) {
+    case "photon":
+      return equipment.photon_energies || [];
+    case "electron":
+      return equipment.electron_energies || [];
+    case "fff":
+      return equipment.fff_energies || [];
+    default:
+      return [];
+  }
+}
+
 // Parse tolerance string to get numeric value, type, and expected value
 function parseTolerance(tolerance: string | null | undefined): {
   value: number;
@@ -189,6 +230,7 @@ function QAFormContent() {
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [tests, setTests] = useState<QATestDefinition[]>([]);
   const [results, setResults] = useState<Record<string, TestResult>>({});
+  const [energyResults, setEnergyResults] = useState<Record<string, EnergyResult[]>>({});
   const [baselines, setBaselines] = useState<Record<string, { values: BaselineValues; notes?: string }>>({});
   const [comments, setComments] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -211,6 +253,8 @@ function QAFormContent() {
 
       // Initialize results
       const initialResults: Record<string, TestResult> = {};
+      const initialEnergyResults: Record<string, EnergyResult[]> = {};
+
       data.tests?.forEach((test: QATestDefinition) => {
         initialResults[test.test_id] = {
           test_id: test.test_id,
@@ -220,8 +264,24 @@ function QAFormContent() {
           deviation: undefined,
           notes: "",
         };
+
+        // Initialize energy-specific results for output constancy tests
+        if (data.equipment) {
+          const energyType = isEnergySpecificTest(test.test_id, test.description);
+          if (energyType) {
+            const energies = getEnergiesForTest(data.equipment, energyType);
+            initialEnergyResults[test.test_id] = energies.map(energy => ({
+              energy,
+              measurement: undefined,
+              baseline_value: undefined,
+              deviation: undefined,
+              status: "" as QAStatus,
+            }));
+          }
+        }
       });
       setResults(initialResults);
+      setEnergyResults(initialEnergyResults);
 
       // Fetch baselines for this equipment and pre-populate results
       if (data.equipment?.id) {
@@ -354,6 +414,27 @@ function QAFormContent() {
               }
             });
             setResults(updatedResults);
+
+            // Pre-populate energy-specific baselines
+            const updatedEnergyResults = { ...initialEnergyResults };
+            data.tests?.forEach((test: QATestDefinition) => {
+              const energyType = isEnergySpecificTest(test.test_id, test.description);
+              if (energyType && updatedEnergyResults[test.test_id]) {
+                updatedEnergyResults[test.test_id] = updatedEnergyResults[test.test_id].map(er => {
+                  // Look for baseline stored as OUTPUT_<energy> (e.g., OUTPUT_6MV, OUTPUT_9MeV)
+                  const baselineKey = `OUTPUT_${er.energy}`;
+                  const energyBaseline = fetchedBaselines[baselineKey];
+                  if (energyBaseline?.values?.reference_output !== undefined) {
+                    return {
+                      ...er,
+                      baseline_value: energyBaseline.values.reference_output,
+                    };
+                  }
+                  return er;
+                });
+              }
+            });
+            setEnergyResults(updatedEnergyResults);
           }
         } catch (err) {
           console.error("Error fetching baselines:", err);
@@ -426,6 +507,123 @@ function QAFormContent() {
         notes,
       },
     }));
+  };
+
+  // Handlers for energy-specific tests
+  const updateEnergyMeasurement = (
+    testId: string,
+    energy: string,
+    measurement: number | undefined,
+    test: QATestDefinition
+  ) => {
+    setEnergyResults((prev) => {
+      const testResults = prev[testId] || [];
+      const updatedResults = testResults.map((er) => {
+        if (er.energy === energy) {
+          const { status, deviation } = calculateStatus(
+            measurement,
+            er.baseline_value,
+            test.tolerance,
+            test.action_level
+          );
+          return {
+            ...er,
+            measurement,
+            deviation,
+            status: status || er.status,
+          };
+        }
+        return er;
+      });
+
+      // Update overall test status based on all energy results
+      const allResults = updatedResults.filter((r) => r.measurement !== undefined);
+      let overallStatus: QAStatus = "";
+      if (allResults.length > 0) {
+        const hasFail = allResults.some((r) => r.status === "fail");
+        const allPass = allResults.every((r) => r.status === "pass" || r.status === "na");
+        overallStatus = hasFail ? "fail" : allPass ? "pass" : "";
+      }
+
+      // Update the main results with overall status
+      setResults((prevResults) => ({
+        ...prevResults,
+        [testId]: {
+          ...prevResults[testId],
+          status: overallStatus,
+        },
+      }));
+
+      return {
+        ...prev,
+        [testId]: updatedResults,
+      };
+    });
+  };
+
+  const updateEnergyBaseline = (
+    testId: string,
+    energy: string,
+    baseline: number | undefined,
+    test: QATestDefinition
+  ) => {
+    setEnergyResults((prev) => {
+      const testResults = prev[testId] || [];
+      const updatedResults = testResults.map((er) => {
+        if (er.energy === energy) {
+          const { status, deviation } = calculateStatus(
+            er.measurement,
+            baseline,
+            test.tolerance,
+            test.action_level
+          );
+          return {
+            ...er,
+            baseline_value: baseline,
+            deviation,
+            status: status || er.status,
+          };
+        }
+        return er;
+      });
+      return {
+        ...prev,
+        [testId]: updatedResults,
+      };
+    });
+  };
+
+  const saveEnergyBaseline = async (testId: string, energy: string, referenceOutput: number) => {
+    if (!equipment) return;
+
+    const baselineKey = `OUTPUT_${energy}`;
+    try {
+      const response = await fetch(`/api/equipment/${equipment.id}/baselines`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          test_id: baselineKey,
+          values: {
+            reference_output: referenceOutput,
+            measurement_date: new Date().toISOString().split("T")[0],
+          },
+        }),
+      });
+
+      if (response.ok) {
+        setBaselines((prev) => ({
+          ...prev,
+          [baselineKey]: {
+            values: {
+              reference_output: referenceOutput,
+              measurement_date: new Date().toISOString().split("T")[0],
+            },
+          },
+        }));
+      }
+    } catch (err) {
+      console.error("Error saving energy baseline:", err);
+    }
   };
 
   // Handler for inline calculator results
@@ -751,6 +949,52 @@ function QAFormContent() {
     setError(null);
 
     try {
+      // Build results array, expanding energy-specific tests
+      const allResults: Array<{
+        test_id: string;
+        status: string;
+        measurement?: number;
+        baseline_value?: number;
+        deviation?: number;
+        notes?: string;
+        energy?: string;
+      }> = [];
+
+      tests.forEach((test) => {
+        const energyType = isEnergySpecificTest(test.test_id, test.description);
+        if (energyType && energyResults[test.test_id]) {
+          // Add individual energy results
+          energyResults[test.test_id].forEach((er) => {
+            allResults.push({
+              test_id: `${test.test_id}_${er.energy}`,
+              status: er.status,
+              measurement: er.measurement,
+              baseline_value: er.baseline_value,
+              deviation: er.deviation,
+              energy: er.energy,
+            });
+          });
+          // Also add the overall result for the parent test
+          const parentResult = results[test.test_id];
+          allResults.push({
+            test_id: test.test_id,
+            status: parentResult?.status || "",
+            notes: parentResult?.notes,
+          });
+        } else {
+          // Regular test result
+          const r = results[test.test_id];
+          allResults.push({
+            test_id: r.test_id,
+            status: r.status,
+            measurement: r.measurement,
+            baseline_value: r.baseline_value,
+            deviation: r.deviation,
+            notes: r.notes,
+          });
+        }
+      });
+
       const response = await fetch("/api/qa/reports", {
         method: "POST",
         headers: {
@@ -760,14 +1004,7 @@ function QAFormContent() {
           equipment_id: equipment.id,
           qa_type: frequency,
           comments,
-          results: Object.values(results).map(r => ({
-            test_id: r.test_id,
-            status: r.status,
-            measurement: r.measurement,
-            baseline_value: r.baseline_value,
-            deviation: r.deviation,
-            notes: r.notes,
-          })),
+          results: allResults,
         }),
       });
 
@@ -983,6 +1220,152 @@ function QAFormContent() {
                               </div>
                             </div>
                           </div>
+                        ) : equipment && isEnergySpecificTest(test.test_id, test.description) ? (
+                          /* Energy-specific test - show inputs for each energy */
+                          (() => {
+                            const energyType = isEnergySpecificTest(test.test_id, test.description)!;
+                            const energies = getEnergiesForTest(equipment, energyType);
+                            const testEnergyResults = energyResults[test.test_id] || [];
+
+                            if (energies.length === 0) {
+                              return (
+                                <div className="text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-md">
+                                  No {energyType} energies configured for this equipment.
+                                  <a href={`/equipment`} className="ml-1 underline">Add energies in Equipment settings.</a>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  {energies.map((energy) => {
+                                    const energyResult = testEnergyResults.find((er) => er.energy === energy);
+                                    const energyStatusColor = energyResult?.status === "pass"
+                                      ? "border-green-300 bg-green-50"
+                                      : energyResult?.status === "fail"
+                                      ? "border-red-300 bg-red-50"
+                                      : "border-gray-200";
+
+                                    return (
+                                      <div
+                                        key={energy}
+                                        className={`p-3 rounded-lg border ${energyStatusColor}`}
+                                      >
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="font-medium text-gray-900">{energy}</span>
+                                          {energyResult?.status && (
+                                            <span className={`text-xs px-2 py-0.5 rounded ${
+                                              energyResult.status === "pass"
+                                                ? "bg-green-100 text-green-800"
+                                                : energyResult.status === "fail"
+                                                ? "bg-red-100 text-red-800"
+                                                : "bg-gray-100 text-gray-600"
+                                            }`}>
+                                              {energyResult.status === "pass" ? "PASS" : energyResult.status === "fail" ? "FAIL" : "N/A"}
+                                              {energyResult.deviation !== undefined && (
+                                                <span className="ml-1">
+                                                  ({energyResult.deviation >= 0 ? "+" : ""}{energyResult.deviation.toFixed(2)}%)
+                                                </span>
+                                              )}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <div className="flex-1">
+                                            <label className="text-xs text-gray-500 block mb-1">Reference</label>
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              placeholder="Ref"
+                                              value={energyResult?.baseline_value ?? ""}
+                                              onChange={(e) =>
+                                                updateEnergyBaseline(
+                                                  test.test_id,
+                                                  energy,
+                                                  e.target.value ? parseFloat(e.target.value) : undefined,
+                                                  test
+                                                )
+                                              }
+                                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md bg-gray-50"
+                                            />
+                                          </div>
+                                          <div className="flex-1">
+                                            <label className="text-xs text-gray-500 block mb-1">Measured</label>
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              placeholder="Value"
+                                              value={energyResult?.measurement ?? ""}
+                                              onChange={(e) =>
+                                                updateEnergyMeasurement(
+                                                  test.test_id,
+                                                  energy,
+                                                  e.target.value ? parseFloat(e.target.value) : undefined,
+                                                  test
+                                                )
+                                              }
+                                              className={`w-full px-2 py-1.5 text-sm border rounded-md ${
+                                                energyResult?.status === "pass"
+                                                  ? "border-green-300"
+                                                  : energyResult?.status === "fail"
+                                                  ? "border-red-300"
+                                                  : "border-gray-300"
+                                              }`}
+                                            />
+                                          </div>
+                                        </div>
+                                        {energyResult?.measurement !== undefined && (
+                                          <button
+                                            type="button"
+                                            onClick={() => saveEnergyBaseline(test.test_id, energy, energyResult.measurement!)}
+                                            className="mt-2 w-full px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200"
+                                          >
+                                            Set as Baseline
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {/* Overall status and override buttons */}
+                                <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
+                                  {result?.status && (
+                                    <div className={`px-3 py-1.5 rounded-md text-sm font-medium ${
+                                      result.status === "pass"
+                                        ? "bg-green-100 text-green-800"
+                                        : result.status === "fail"
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-gray-100 text-gray-800"
+                                    }`}>
+                                      Overall: {result.status === "pass" ? "✓ PASS" : result.status === "fail" ? "✗ FAIL" : "N/A"}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs text-gray-400 mr-1">Override:</span>
+                                    {["pass", "fail", "na"].map((status) => (
+                                      <button
+                                        key={status}
+                                        type="button"
+                                        onClick={() => updateStatus(test.test_id, status as QAStatus)}
+                                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                          result?.status === status
+                                            ? status === "pass"
+                                              ? "bg-green-500 text-white"
+                                              : status === "fail"
+                                              ? "bg-red-500 text-white"
+                                              : "bg-gray-500 text-white"
+                                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                        }`}
+                                      >
+                                        {status === "na" ? "N/A" : status.charAt(0).toUpperCase()}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()
                         ) : test.requires_measurement ? (
                           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
                             {/* Reference/Baseline value - show for non-threshold tests that need comparison */}

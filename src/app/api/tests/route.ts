@@ -2,6 +2,22 @@ import { auth } from "@clerk/nextjs/server";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
+// Type for test input from request body
+interface TestInput {
+  equipment_type: string;
+  test_id: string;
+  frequency: string;
+  description: string;
+  tolerance?: string | null;
+  action_level?: string | null;
+  category?: string | null;
+  requires_measurement?: boolean;
+  measurement_unit?: string | null;
+  calculator_type?: string | null;
+  display_order?: number;
+  is_active?: boolean;
+}
+
 // GET - Fetch all test definitions for an equipment type (or all)
 export async function GET(request: NextRequest) {
   try {
@@ -79,7 +95,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // Support both single test and batch insert
-    const testsToInsert = Array.isArray(body.tests) ? body.tests : [body];
+    const testsToInsert: TestInput[] = Array.isArray(body.tests) ? body.tests : [body];
 
     // Validate required fields
     for (const test of testsToInsert) {
