@@ -16,6 +16,7 @@ interface Profile {
 
 interface SidebarProps {
   profile: Profile;
+  showSources?: boolean;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -148,11 +149,17 @@ const adminNavigation = [
   },
 ];
 
-export function Sidebar({ profile }: SidebarProps) {
+export function Sidebar({ profile, showSources = false }: SidebarProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isAdmin = profile.role === "admin";
+
+  // Filter navigation based on feature flags
+  const filteredNavigation = navigation.filter((item) => {
+    if (item.href === "/sources") return showSources;
+    return true;
+  });
 
   return (
     <>
@@ -200,7 +207,7 @@ export function Sidebar({ profile }: SidebarProps) {
 
           {/* Navigation */}
           <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-            {navigation.map((item) => {
+            {filteredNavigation.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
               return (
                 <Link
