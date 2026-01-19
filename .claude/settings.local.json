@@ -23,7 +23,8 @@
       "Bash(sudo apt update:*)",
       "Bash(sudo apt install:*)",
       "Bash(npx eslint:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(npx supabase db push)"
     ]
   }
 }

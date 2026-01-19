@@ -183,7 +183,7 @@ INSERT INTO radionuclide_data (radionuclide, half_life_days, half_life_display, 
 ('Kr-81m', 0.0000912, '13.1 seconds', 'IT', 190, 'Lung ventilation'),
 ('Fe-59', 44.495, '44.5 days', 'β-', 1099, 'Iron studies'),
 ('H-3', 4500.87, '12.3 years', 'β-', NULL, 'Research'),
-('C-14', 2.09e9, '5730 years', 'β-', NULL, 'Research'),
+('C-14', 2092897.5, '5730 years', 'β-', NULL, 'Research'),
 ('Br-82', 1.4708, '35.3 hours', 'β-', 776, 'Research');
 
 -- Function to calculate current activity
