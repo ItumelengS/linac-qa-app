@@ -219,7 +219,7 @@ SELECT
     s.calibration_date,
     COALESCE(s.half_life_days, r.half_life_days)
   ) AS current_activity,
-  EXTRACT(EPOCH FROM (CURRENT_DATE - s.calibration_date)) / 86400.0 AS days_since_calibration
+  (CURRENT_DATE - s.calibration_date)::NUMERIC AS days_since_calibration
 FROM radioactive_sources s
 LEFT JOIN radionuclide_data r ON UPPER(s.radionuclide) = UPPER(r.radionuclide);
 
