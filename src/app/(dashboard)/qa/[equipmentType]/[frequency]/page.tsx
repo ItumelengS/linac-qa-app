@@ -34,6 +34,81 @@ interface EnergyResult {
   status: QAStatus;
 }
 
+// Detector-specific result for SPECT/CT tests
+interface DetectorResult {
+  detector: string; // "Detector 1", "Detector 2", etc.
+  measurement?: number;
+  measurement2?: number; // Some tests have UFOV and CFOV
+  baseline_value?: number;
+  baseline_value2?: number;
+  deviation?: number;
+  status: QAStatus;
+}
+
+// Check if a test is detector-specific (for SPECT/gamma cameras)
+function isDetectorSpecificTest(testId: string, description: string, equipmentType: string): boolean {
+  // Only applies to gamma cameras and SPECT systems
+  if (!["gamma_camera", "spect", "spect_ct"].includes(equipmentType)) {
+    return false;
+  }
+
+  const descLower = description.toLowerCase();
+  const testIdUpper = testId.toUpperCase();
+
+  // Daily SPECT tests that are per-detector
+  if (testIdUpper === "DSC6" || descLower.includes("energy window") || descLower.includes("photopeak")) {
+    return true;
+  }
+  if (testIdUpper === "DSC8" || descLower.includes("uniformity") && descLower.includes("flood")) {
+    return true;
+  }
+
+  // Weekly SPECT tests that are per-detector
+  if (testIdUpper === "WSC1" || descLower.includes("intrinsic uniformity")) {
+    return true;
+  }
+  if (testIdUpper === "WSC3" || descLower.includes("energy resolution")) {
+    return true;
+  }
+  if (testIdUpper === "WSC4" || descLower.includes("center of rotation") || descLower.includes("cor")) {
+    return true;
+  }
+  if (testIdUpper === "WSC5" || descLower.includes("detector head tilt")) {
+    return true;
+  }
+
+  // Quarterly SPECT tests that are per-detector
+  if (testIdUpper === "QSC1" || descLower.includes("sensitivity")) {
+    return true;
+  }
+  if (testIdUpper === "QSC2" || (descLower.includes("spatial resolution") && descLower.includes("spect"))) {
+    return true;
+  }
+
+  // Annual SPECT tests that are per-detector
+  if (testIdUpper === "ASC2" || descLower.includes("intrinsic spatial resolution")) {
+    return true;
+  }
+  if (testIdUpper === "ASC3" || descLower.includes("spatial linearity")) {
+    return true;
+  }
+  if (testIdUpper === "ASC4" || descLower.includes("count rate") || descLower.includes("dead time")) {
+    return true;
+  }
+
+  return false;
+}
+
+// Get detector labels based on equipment's detector count
+function getDetectorLabels(equipment: Equipment): string[] {
+  const count = equipment.detector_heads || 2; // Default to dual-head
+  const labels: string[] = [];
+  for (let i = 1; i <= count; i++) {
+    labels.push(`Detector ${i}`);
+  }
+  return labels;
+}
+
 // Check if a test is energy-specific
 // Returns the energy type(s) this test should be expanded for
 function isEnergySpecificTest(testId: string, description: string): "photon" | "electron" | "fff" | "all" | null {
@@ -277,6 +352,7 @@ function QAFormContent() {
   const [tests, setTests] = useState<QATestDefinition[]>([]);
   const [results, setResults] = useState<Record<string, TestResult>>({});
   const [energyResults, setEnergyResults] = useState<Record<string, EnergyResult[]>>({});
+  const [detectorResults, setDetectorResults] = useState<Record<string, DetectorResult[]>>({});
   const [baselines, setBaselines] = useState<Record<string, { values: BaselineValues; notes?: string }>>({});
   const [comments, setComments] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -300,6 +376,7 @@ function QAFormContent() {
       // Initialize results
       const initialResults: Record<string, TestResult> = {};
       const initialEnergyResults: Record<string, EnergyResult[]> = {};
+      const initialDetectorResults: Record<string, DetectorResult[]> = {};
 
       data.tests?.forEach((test: QATestDefinition) => {
         initialResults[test.test_id] = {
@@ -324,10 +401,25 @@ function QAFormContent() {
               status: "" as QAStatus,
             }));
           }
+
+          // Initialize detector-specific results for SPECT/gamma camera tests
+          if (isDetectorSpecificTest(test.test_id, test.description, data.equipment.equipment_type)) {
+            const detectors = getDetectorLabels(data.equipment);
+            initialDetectorResults[test.test_id] = detectors.map(detector => ({
+              detector,
+              measurement: undefined,
+              measurement2: undefined,
+              baseline_value: undefined,
+              baseline_value2: undefined,
+              deviation: undefined,
+              status: "" as QAStatus,
+            }));
+          }
         }
       });
       setResults(initialResults);
       setEnergyResults(initialEnergyResults);
+      setDetectorResults(initialDetectorResults);
 
       // Fetch baselines for this equipment and pre-populate results
       if (data.equipment?.id) {
@@ -693,6 +785,126 @@ function QAFormContent() {
       }
     } catch (err) {
       console.error("Error saving energy baseline:", err);
+    }
+  };
+
+  // Handlers for detector-specific tests (SPECT/CT)
+  const updateDetectorMeasurement = (
+    testId: string,
+    detector: string,
+    measurement: number | undefined,
+    test: QATestDefinition
+  ) => {
+    setDetectorResults((prev) => {
+      const testResults = prev[testId] || [];
+      const updatedResults = testResults.map((dr) => {
+        if (dr.detector === detector) {
+          const { status, deviation } = calculateStatus(
+            measurement,
+            dr.baseline_value,
+            test.tolerance,
+            test.action_level
+          );
+          return {
+            ...dr,
+            measurement,
+            deviation,
+            status: status || dr.status,
+          };
+        }
+        return dr;
+      });
+
+      // Update overall test status based on all detector results
+      const allResults = updatedResults.filter((r) => r.measurement !== undefined);
+      let overallStatus: QAStatus = "";
+      if (allResults.length > 0) {
+        const hasFail = allResults.some((r) => r.status === "fail");
+        const allPass = allResults.every((r) => r.status === "pass" || r.status === "na");
+        overallStatus = hasFail ? "fail" : allPass ? "pass" : "";
+      }
+
+      // Update the main results with overall status
+      setResults((prevResults) => ({
+        ...prevResults,
+        [testId]: {
+          ...prevResults[testId],
+          status: overallStatus,
+        },
+      }));
+
+      return {
+        ...prev,
+        [testId]: updatedResults,
+      };
+    });
+  };
+
+  const updateDetectorBaseline = (
+    testId: string,
+    detector: string,
+    baseline: number | undefined,
+    test: QATestDefinition
+  ) => {
+    setDetectorResults((prev) => {
+      const testResults = prev[testId] || [];
+      const updatedResults = testResults.map((dr) => {
+        if (dr.detector === detector) {
+          const { status, deviation } = calculateStatus(
+            dr.measurement,
+            baseline,
+            test.tolerance,
+            test.action_level
+          );
+          return {
+            ...dr,
+            baseline_value: baseline,
+            deviation,
+            status: status || dr.status,
+          };
+        }
+        return dr;
+      });
+      return {
+        ...prev,
+        [testId]: updatedResults,
+      };
+    });
+  };
+
+  const saveDetectorBaseline = async (testId: string, detector: string, referenceValue: number) => {
+    if (!equipment) return;
+
+    // Normalize detector for key (e.g., "Detector_1")
+    const detectorKey = detector.replace(/\s+/g, '_');
+    const baselineKey = `${testId}_${detectorKey}`;
+
+    try {
+      const response = await fetch(`/api/equipment/${equipment.id}/baselines`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          test_id: baselineKey,
+          values: {
+            reference_value: referenceValue,
+            measurement_date: new Date().toISOString().split("T")[0],
+          },
+        }),
+      });
+
+      if (response.ok) {
+        setBaselines((prev) => ({
+          ...prev,
+          [baselineKey]: {
+            values: {
+              reference_value: referenceValue,
+              measurement_date: new Date().toISOString().split("T")[0],
+            },
+          },
+        }));
+      }
+    } catch (err) {
+      console.error("Error saving detector baseline:", err);
     }
   };
 
@@ -1394,6 +1606,142 @@ function QAFormContent() {
                                           <button
                                             type="button"
                                             onClick={() => saveEnergyBaseline(test.test_id, energy, energyResult.measurement!)}
+                                            className="mt-2 w-full px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200"
+                                          >
+                                            Set as Baseline
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {/* Overall status and override buttons */}
+                                <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
+                                  {result?.status && (
+                                    <div className={`px-3 py-1.5 rounded-md text-sm font-medium ${
+                                      result.status === "pass"
+                                        ? "bg-green-100 text-green-800"
+                                        : result.status === "fail"
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-gray-100 text-gray-800"
+                                    }`}>
+                                      Overall: {result.status === "pass" ? "✓ PASS" : result.status === "fail" ? "✗ FAIL" : "N/A"}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs text-gray-400 mr-1">Override:</span>
+                                    {["pass", "fail", "na"].map((status) => (
+                                      <button
+                                        key={status}
+                                        type="button"
+                                        onClick={() => updateStatus(test.test_id, status as QAStatus)}
+                                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                          result?.status === status
+                                            ? status === "pass"
+                                              ? "bg-green-500 text-white"
+                                              : status === "fail"
+                                              ? "bg-red-500 text-white"
+                                              : "bg-gray-500 text-white"
+                                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                        }`}
+                                      >
+                                        {status === "na" ? "N/A" : status.charAt(0).toUpperCase()}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()
+                        ) : equipment && isDetectorSpecificTest(test.test_id, test.description, equipment.equipment_type) ? (
+                          /* Detector-specific test - show inputs for each detector head */
+                          (() => {
+                            const detectors = getDetectorLabels(equipment);
+                            const testDetectorResults = detectorResults[test.test_id] || [];
+
+                            return (
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  {detectors.map((detector) => {
+                                    const detectorResult = testDetectorResults.find((dr) => dr.detector === detector);
+                                    const detectorStatusColor = detectorResult?.status === "pass"
+                                      ? "border-green-300 bg-green-50"
+                                      : detectorResult?.status === "fail"
+                                      ? "border-red-300 bg-red-50"
+                                      : "border-gray-200";
+
+                                    return (
+                                      <div
+                                        key={detector}
+                                        className={`p-3 rounded-lg border ${detectorStatusColor}`}
+                                      >
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="font-medium text-gray-900">{detector}</span>
+                                          {detectorResult?.status && (
+                                            <span className={`text-xs px-2 py-0.5 rounded ${
+                                              detectorResult.status === "pass"
+                                                ? "bg-green-100 text-green-800"
+                                                : detectorResult.status === "fail"
+                                                ? "bg-red-100 text-red-800"
+                                                : "bg-gray-100 text-gray-600"
+                                            }`}>
+                                              {detectorResult.status === "pass" ? "PASS" : detectorResult.status === "fail" ? "FAIL" : "N/A"}
+                                              {detectorResult.deviation !== undefined && (
+                                                <span className="ml-1">
+                                                  ({detectorResult.deviation >= 0 ? "+" : ""}{detectorResult.deviation.toFixed(2)})
+                                                </span>
+                                              )}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <div className="flex-1">
+                                            <label className="text-xs text-gray-500 block mb-1">Reference</label>
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              placeholder="Ref"
+                                              value={detectorResult?.baseline_value ?? ""}
+                                              onChange={(e) =>
+                                                updateDetectorBaseline(
+                                                  test.test_id,
+                                                  detector,
+                                                  e.target.value ? parseFloat(e.target.value) : undefined,
+                                                  test
+                                                )
+                                              }
+                                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md bg-gray-50"
+                                            />
+                                          </div>
+                                          <div className="flex-1">
+                                            <label className="text-xs text-gray-500 block mb-1">Measured</label>
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              placeholder="Value"
+                                              value={detectorResult?.measurement ?? ""}
+                                              onChange={(e) =>
+                                                updateDetectorMeasurement(
+                                                  test.test_id,
+                                                  detector,
+                                                  e.target.value ? parseFloat(e.target.value) : undefined,
+                                                  test
+                                                )
+                                              }
+                                              className={`w-full px-2 py-1.5 text-sm border rounded-md ${
+                                                detectorResult?.status === "pass"
+                                                  ? "border-green-300"
+                                                  : detectorResult?.status === "fail"
+                                                  ? "border-red-300"
+                                                  : "border-gray-300"
+                                              }`}
+                                            />
+                                          </div>
+                                        </div>
+                                        {detectorResult?.measurement !== undefined && (
+                                          <button
+                                            type="button"
+                                            onClick={() => saveDetectorBaseline(test.test_id, detector, detectorResult.measurement!)}
                                             className="mt-2 w-full px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200"
                                           >
                                             Set as Baseline

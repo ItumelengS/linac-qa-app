@@ -56,6 +56,7 @@ export async function PUT(
       room_number,
       photon_energies,
       electron_energies,
+      detector_heads,
     } = body as {
       name?: string;
       equipment_type?: EquipmentType;
@@ -66,6 +67,7 @@ export async function PUT(
       room_number?: string;
       photon_energies?: string[];
       electron_energies?: string[];
+      detector_heads?: number | null;
     };
 
     // Build update object with only provided fields
@@ -79,6 +81,7 @@ export async function PUT(
     if (room_number !== undefined) updateData.room_number = room_number || null;
     if (photon_energies !== undefined) updateData.photon_energies = photon_energies || [];
     if (electron_energies !== undefined) updateData.electron_energies = electron_energies || [];
+    if (detector_heads !== undefined) updateData.detector_heads = detector_heads;
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });

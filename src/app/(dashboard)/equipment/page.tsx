@@ -159,6 +159,7 @@ function EditEquipmentModal({
     room_number: equipment.room_number || "",
     photon_energies: equipment.photon_energies || [],
     electron_energies: equipment.electron_energies || [],
+    detector_heads: equipment.detector_heads || 2,
   });
   const [photonEnergiesInput, setPhotonEnergiesInput] = useState(
     (equipment.photon_energies || []).join(", ")
@@ -184,6 +185,7 @@ function EditEquipmentModal({
           ...formData,
           photon_energies: photonEnergies,
           electron_energies: electronEnergies,
+          detector_heads: formData.detector_heads || null,
         }),
       });
 
@@ -348,6 +350,31 @@ function EditEquipmentModal({
                   placeholder="e.g., 6MeV, 9MeV, 12MeV"
                 />
                 <p className="text-xs text-gray-500 mt-1">Comma-separated values</p>
+              </div>
+            </div>
+          )}
+
+          {/* Detector heads for nuclear medicine equipment */}
+          {["gamma_camera", "spect", "spect_ct"].includes(formData.equipment_type) && (
+            <div className="pt-4 border-t">
+              <div className="max-w-xs">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Number of Detector Heads
+                </label>
+                <select
+                  value={formData.detector_heads || 2}
+                  onChange={(e) =>
+                    setFormData({ ...formData, detector_heads: parseInt(e.target.value) })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value={1}>1 (Single-head)</option>
+                  <option value={2}>2 (Dual-head)</option>
+                  <option value={3}>3 (Triple-head)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Most SPECT/CT systems have 2 detector heads
+                </p>
               </div>
             </div>
           )}
@@ -1830,6 +1857,7 @@ export default function EquipmentPage() {
     room_number: "",
     photon_energies: [] as string[],
     electron_energies: [] as string[],
+    detector_heads: 2 as number,
   });
   const [photonEnergiesInput, setPhotonEnergiesInput] = useState("");
   const [electronEnergiesInput, setElectronEnergiesInput] = useState("");
@@ -1885,6 +1913,9 @@ export default function EquipmentPage() {
           ...formData,
           photon_energies: photonEnergies,
           electron_energies: electronEnergies,
+          detector_heads: ["gamma_camera", "spect", "spect_ct"].includes(formData.equipment_type)
+            ? formData.detector_heads
+            : null,
         }),
       });
 
@@ -1908,6 +1939,7 @@ export default function EquipmentPage() {
         room_number: "",
         photon_energies: [],
         electron_energies: [],
+        detector_heads: 2,
       });
       setPhotonEnergiesInput("");
       setElectronEnergiesInput("");
@@ -2102,6 +2134,31 @@ export default function EquipmentPage() {
                     placeholder="e.g., 6MeV, 9MeV, 12MeV"
                   />
                   <p className="text-xs text-gray-500 mt-1">Comma-separated values</p>
+                </div>
+              </div>
+            )}
+
+            {/* Detector heads for nuclear medicine equipment */}
+            {["gamma_camera", "spect", "spect_ct"].includes(formData.equipment_type) && (
+              <div className="pt-4 border-t">
+                <div className="max-w-xs">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Number of Detector Heads
+                  </label>
+                  <select
+                    value={formData.detector_heads}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, detector_heads: parseInt(e.target.value) }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value={1}>1 (Single-head)</option>
+                    <option value={2}>2 (Dual-head)</option>
+                    <option value={3}>3 (Triple-head)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Most SPECT/CT systems have 2 detector heads
+                  </p>
                 </div>
               </div>
             )}
