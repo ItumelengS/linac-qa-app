@@ -160,6 +160,7 @@ function EditEquipmentModal({
     photon_energies: equipment.photon_energies || [],
     electron_energies: equipment.electron_energies || [],
     detector_heads: equipment.detector_heads || 2,
+    source_position_checks: equipment.source_position_checks || 1,
   });
   const [photonEnergiesInput, setPhotonEnergiesInput] = useState(
     (equipment.photon_energies || []).join(", ")
@@ -186,6 +187,7 @@ function EditEquipmentModal({
           photon_energies: photonEnergies,
           electron_energies: electronEnergies,
           detector_heads: formData.detector_heads || null,
+          source_position_checks: formData.source_position_checks || null,
         }),
       });
 
@@ -374,6 +376,33 @@ function EditEquipmentModal({
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
                   Most SPECT/CT systems have 2 detector heads
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Source position checks for brachytherapy equipment */}
+          {["brachytherapy_hdr", "brachytherapy_ldr"].includes(formData.equipment_type) && (
+            <div className="pt-4 border-t">
+              <div className="max-w-xs">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Source Position Checks
+                </label>
+                <select
+                  value={formData.source_position_checks || 1}
+                  onChange={(e) =>
+                    setFormData({ ...formData, source_position_checks: parseInt(e.target.value) })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value={1}>1 position</option>
+                  <option value={2}>2 positions</option>
+                  <option value={3}>3 positions</option>
+                  <option value={4}>4 positions</option>
+                  <option value={5}>5 positions</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Number of positions to verify for source positional accuracy (DBR10)
                 </p>
               </div>
             </div>
@@ -1858,6 +1887,7 @@ export default function EquipmentPage() {
     photon_energies: [] as string[],
     electron_energies: [] as string[],
     detector_heads: 2 as number,
+    source_position_checks: 1 as number,
   });
   const [photonEnergiesInput, setPhotonEnergiesInput] = useState("");
   const [electronEnergiesInput, setElectronEnergiesInput] = useState("");
@@ -1916,6 +1946,9 @@ export default function EquipmentPage() {
           detector_heads: ["gamma_camera", "spect", "spect_ct"].includes(formData.equipment_type)
             ? formData.detector_heads
             : null,
+          source_position_checks: ["brachytherapy_hdr", "brachytherapy_ldr"].includes(formData.equipment_type)
+            ? formData.source_position_checks
+            : null,
         }),
       });
 
@@ -1940,6 +1973,7 @@ export default function EquipmentPage() {
         photon_energies: [],
         electron_energies: [],
         detector_heads: 2,
+        source_position_checks: 1,
       });
       setPhotonEnergiesInput("");
       setElectronEnergiesInput("");
@@ -2158,6 +2192,33 @@ export default function EquipmentPage() {
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     Most SPECT/CT systems have 2 detector heads
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Source position checks for brachytherapy equipment */}
+            {["brachytherapy_hdr", "brachytherapy_ldr"].includes(formData.equipment_type) && (
+              <div className="pt-4 border-t">
+                <div className="max-w-xs">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Source Position Checks
+                  </label>
+                  <select
+                    value={formData.source_position_checks}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, source_position_checks: parseInt(e.target.value) }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value={1}>1 position</option>
+                    <option value={2}>2 positions</option>
+                    <option value={3}>3 positions</option>
+                    <option value={4}>4 positions</option>
+                    <option value={5}>5 positions</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Number of positions to verify for source positional accuracy (DBR10)
                   </p>
                 </div>
               </div>

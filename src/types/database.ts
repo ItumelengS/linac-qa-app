@@ -134,6 +134,7 @@ export interface Equipment {
   source_calibration_date?: string;
   tube_serial?: string;
   detector_heads?: number; // Number of detector heads for gamma cameras/SPECT (typically 1, 2, or 3)
+  source_position_checks?: number; // Number of positions to check for brachytherapy source positioning (1-5)
   notes?: string;
   metadata: Record<string, unknown>;
   created_at: string;

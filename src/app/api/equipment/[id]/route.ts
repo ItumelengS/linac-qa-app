@@ -57,6 +57,7 @@ export async function PUT(
       photon_energies,
       electron_energies,
       detector_heads,
+      source_position_checks,
     } = body as {
       name?: string;
       equipment_type?: EquipmentType;
@@ -68,6 +69,7 @@ export async function PUT(
       photon_energies?: string[];
       electron_energies?: string[];
       detector_heads?: number | null;
+      source_position_checks?: number | null;
     };
 
     // Build update object with only provided fields
@@ -82,6 +84,7 @@ export async function PUT(
     if (photon_energies !== undefined) updateData.photon_energies = photon_energies || [];
     if (electron_energies !== undefined) updateData.electron_energies = electron_energies || [];
     if (detector_heads !== undefined) updateData.detector_heads = detector_heads;
+    if (source_position_checks !== undefined) updateData.source_position_checks = source_position_checks;
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });

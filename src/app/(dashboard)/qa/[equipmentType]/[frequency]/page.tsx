@@ -109,6 +109,43 @@ function getDetectorLabels(equipment: Equipment): string[] {
   return labels;
 }
 
+// Check if a test is position-specific (for brachytherapy source positioning)
+function isPositionSpecificTest(testId: string, description: string, equipmentType: string): boolean {
+  // Only applies to brachytherapy equipment
+  if (!["brachytherapy_hdr", "brachytherapy_ldr"].includes(equipmentType)) {
+    return false;
+  }
+
+  const descLower = description.toLowerCase();
+  const testIdUpper = testId.toUpperCase();
+
+  // DBR10: Source positional accuracy
+  if (testIdUpper === "DBR10" || descLower.includes("source positional accuracy") || descLower.includes("positional accuracy")) {
+    return true;
+  }
+
+  return false;
+}
+
+// Get position labels based on equipment's source_position_checks setting
+function getPositionLabels(equipment: Equipment): string[] {
+  const count = equipment.source_position_checks || 1; // Default to 1 position
+  const labels: string[] = [];
+  for (let i = 1; i <= count; i++) {
+    labels.push(`Position ${i}`);
+  }
+  return labels;
+}
+
+// Position-specific result interface
+interface PositionResult {
+  position: string;
+  measurement?: number;
+  baseline_value?: number;
+  deviation?: number;
+  status: QAStatus;
+}
+
 // Check if a test is energy-specific
 // Returns the energy type(s) this test should be expanded for
 function isEnergySpecificTest(testId: string, description: string): "photon" | "electron" | "fff" | "all" | null {
@@ -353,6 +390,7 @@ function QAFormContent() {
   const [results, setResults] = useState<Record<string, TestResult>>({});
   const [energyResults, setEnergyResults] = useState<Record<string, EnergyResult[]>>({});
   const [detectorResults, setDetectorResults] = useState<Record<string, DetectorResult[]>>({});
+  const [positionResults, setPositionResults] = useState<Record<string, PositionResult[]>>({});
   const [baselines, setBaselines] = useState<Record<string, { values: BaselineValues; notes?: string }>>({});
   const [comments, setComments] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -377,6 +415,7 @@ function QAFormContent() {
       const initialResults: Record<string, TestResult> = {};
       const initialEnergyResults: Record<string, EnergyResult[]> = {};
       const initialDetectorResults: Record<string, DetectorResult[]> = {};
+      const initialPositionResults: Record<string, PositionResult[]> = {};
 
       data.tests?.forEach((test: QATestDefinition) => {
         initialResults[test.test_id] = {
@@ -415,11 +454,24 @@ function QAFormContent() {
               status: "" as QAStatus,
             }));
           }
+
+          // Initialize position-specific results for brachytherapy source positioning tests
+          if (isPositionSpecificTest(test.test_id, test.description, data.equipment.equipment_type)) {
+            const positions = getPositionLabels(data.equipment);
+            initialPositionResults[test.test_id] = positions.map(position => ({
+              position,
+              measurement: undefined,
+              baseline_value: undefined,
+              deviation: undefined,
+              status: "" as QAStatus,
+            }));
+          }
         }
       });
       setResults(initialResults);
       setEnergyResults(initialEnergyResults);
       setDetectorResults(initialDetectorResults);
+      setPositionResults(initialPositionResults);
 
       // Fetch baselines for this equipment and pre-populate results
       if (data.equipment?.id) {
@@ -588,6 +640,26 @@ function QAFormContent() {
               }
             });
             setEnergyResults(updatedEnergyResults);
+
+            // Pre-populate position-specific baselines for brachytherapy
+            const updatedPositionResults = { ...initialPositionResults };
+            data.tests?.forEach((test: QATestDefinition) => {
+              if (isPositionSpecificTest(test.test_id, test.description, data.equipment.equipment_type) && updatedPositionResults[test.test_id]) {
+                updatedPositionResults[test.test_id] = updatedPositionResults[test.test_id].map(pr => {
+                  // Position keys: DBR10_Position_1, DBR10_Position_2, etc.
+                  const positionKey = `${test.test_id}_${pr.position.replace(/\s+/g, '_')}`;
+                  const positionBaseline = fetchedBaselines[positionKey];
+                  if (positionBaseline?.values?.expected_position !== undefined) {
+                    return {
+                      ...pr,
+                      baseline_value: positionBaseline.values.expected_position,
+                    };
+                  }
+                  return pr;
+                });
+              }
+            });
+            setPositionResults(updatedPositionResults);
           }
         } catch (err) {
           console.error("Error fetching baselines:", err);
@@ -905,6 +977,126 @@ function QAFormContent() {
       }
     } catch (err) {
       console.error("Error saving detector baseline:", err);
+    }
+  };
+
+  // Position-specific handlers for brachytherapy source positioning tests
+  const updatePositionMeasurement = (
+    testId: string,
+    position: string,
+    measurement: number | undefined,
+    test: QATestDefinition
+  ) => {
+    setPositionResults((prev) => {
+      const testResults = prev[testId] || [];
+      const updatedResults = testResults.map((pr) => {
+        if (pr.position === position) {
+          const { status, deviation } = calculateStatus(
+            measurement,
+            pr.baseline_value,
+            test.tolerance,
+            test.action_level
+          );
+          return {
+            ...pr,
+            measurement,
+            deviation,
+            status: status || pr.status,
+          };
+        }
+        return pr;
+      });
+
+      // Update overall test status based on all position results
+      const allResults = updatedResults.filter((r) => r.measurement !== undefined);
+      let overallStatus: QAStatus = "";
+      if (allResults.length > 0) {
+        const hasFail = allResults.some((r) => r.status === "fail");
+        const allPass = allResults.every((r) => r.status === "pass" || r.status === "na");
+        overallStatus = hasFail ? "fail" : allPass ? "pass" : "";
+      }
+
+      // Update the main results with overall status
+      setResults((prevResults) => ({
+        ...prevResults,
+        [testId]: {
+          ...prevResults[testId],
+          status: overallStatus,
+        },
+      }));
+
+      return {
+        ...prev,
+        [testId]: updatedResults,
+      };
+    });
+  };
+
+  const updatePositionBaseline = (
+    testId: string,
+    position: string,
+    baseline: number | undefined,
+    test: QATestDefinition
+  ) => {
+    setPositionResults((prev) => {
+      const testResults = prev[testId] || [];
+      const updatedResults = testResults.map((pr) => {
+        if (pr.position === position) {
+          const { status, deviation } = calculateStatus(
+            pr.measurement,
+            baseline,
+            test.tolerance,
+            test.action_level
+          );
+          return {
+            ...pr,
+            baseline_value: baseline,
+            deviation,
+            status: status || pr.status,
+          };
+        }
+        return pr;
+      });
+      return {
+        ...prev,
+        [testId]: updatedResults,
+      };
+    });
+  };
+
+  const savePositionBaseline = async (testId: string, position: string, referenceValue: number) => {
+    if (!equipment) return;
+
+    // Normalize position for key (e.g., "Position_1")
+    const positionKey = position.replace(/\s+/g, '_');
+    const baselineKey = `${testId}_${positionKey}`;
+
+    try {
+      const response = await fetch(`/api/equipment/${equipment.id}/baselines`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          test_id: baselineKey,
+          values: {
+            expected_position: referenceValue,
+            measurement_date: new Date().toISOString().split("T")[0],
+          },
+        }),
+      });
+
+      if (response.ok) {
+        setBaselines((prev) => ({
+          ...prev,
+          [baselineKey]: {
+            values: {
+              expected_position: referenceValue,
+              measurement_date: new Date().toISOString().split("T")[0],
+            },
+          },
+        }));
+      }
+    } catch (err) {
+      console.error("Error saving position baseline:", err);
     }
   };
 
@@ -1231,7 +1423,7 @@ function QAFormContent() {
     setError(null);
 
     try {
-      // Build results array, expanding energy-specific tests
+      // Build results array, expanding energy-specific, detector-specific, and position-specific tests
       const allResults: Array<{
         test_id: string;
         status: string;
@@ -1240,10 +1432,15 @@ function QAFormContent() {
         deviation?: number;
         notes?: string;
         energy?: string;
+        detector?: string;
+        position?: string;
       }> = [];
 
       tests.forEach((test) => {
         const energyType = isEnergySpecificTest(test.test_id, test.description);
+        const isDetectorTest = equipment && isDetectorSpecificTest(test.test_id, test.description, equipment.equipment_type);
+        const isPositionTest = equipment && isPositionSpecificTest(test.test_id, test.description, equipment.equipment_type);
+
         if (energyType && energyResults[test.test_id]) {
           // Add individual energy results
           energyResults[test.test_id].forEach((er) => {
@@ -1254,6 +1451,44 @@ function QAFormContent() {
               baseline_value: er.baseline_value,
               deviation: er.deviation,
               energy: er.energy,
+            });
+          });
+          // Also add the overall result for the parent test
+          const parentResult = results[test.test_id];
+          allResults.push({
+            test_id: test.test_id,
+            status: parentResult?.status || "",
+            notes: parentResult?.notes,
+          });
+        } else if (isDetectorTest && detectorResults[test.test_id]) {
+          // Add individual detector results
+          detectorResults[test.test_id].forEach((dr) => {
+            allResults.push({
+              test_id: `${test.test_id}_${dr.detector.replace(/\s+/g, '_')}`,
+              status: dr.status,
+              measurement: dr.measurement,
+              baseline_value: dr.baseline_value,
+              deviation: dr.deviation,
+              detector: dr.detector,
+            });
+          });
+          // Also add the overall result for the parent test
+          const parentResult = results[test.test_id];
+          allResults.push({
+            test_id: test.test_id,
+            status: parentResult?.status || "",
+            notes: parentResult?.notes,
+          });
+        } else if (isPositionTest && positionResults[test.test_id]) {
+          // Add individual position results
+          positionResults[test.test_id].forEach((pr) => {
+            allResults.push({
+              test_id: `${test.test_id}_${pr.position.replace(/\s+/g, '_')}`,
+              status: pr.status,
+              measurement: pr.measurement,
+              baseline_value: pr.baseline_value,
+              deviation: pr.deviation,
+              position: pr.position,
             });
           });
           // Also add the overall result for the parent test
@@ -1742,6 +1977,142 @@ function QAFormContent() {
                                           <button
                                             type="button"
                                             onClick={() => saveDetectorBaseline(test.test_id, detector, detectorResult.measurement!)}
+                                            className="mt-2 w-full px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200"
+                                          >
+                                            Set as Baseline
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {/* Overall status and override buttons */}
+                                <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
+                                  {result?.status && (
+                                    <div className={`px-3 py-1.5 rounded-md text-sm font-medium ${
+                                      result.status === "pass"
+                                        ? "bg-green-100 text-green-800"
+                                        : result.status === "fail"
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-gray-100 text-gray-800"
+                                    }`}>
+                                      Overall: {result.status === "pass" ? "✓ PASS" : result.status === "fail" ? "✗ FAIL" : "N/A"}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs text-gray-400 mr-1">Override:</span>
+                                    {["pass", "fail", "na"].map((status) => (
+                                      <button
+                                        key={status}
+                                        type="button"
+                                        onClick={() => updateStatus(test.test_id, status as QAStatus)}
+                                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                          result?.status === status
+                                            ? status === "pass"
+                                              ? "bg-green-500 text-white"
+                                              : status === "fail"
+                                              ? "bg-red-500 text-white"
+                                              : "bg-gray-500 text-white"
+                                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                        }`}
+                                      >
+                                        {status === "na" ? "N/A" : status.charAt(0).toUpperCase()}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()
+                        ) : equipment && isPositionSpecificTest(test.test_id, test.description, equipment.equipment_type) ? (
+                          /* Position-specific test - show inputs for each position (brachytherapy) */
+                          (() => {
+                            const positions = getPositionLabels(equipment);
+                            const testPositionResults = positionResults[test.test_id] || [];
+
+                            return (
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  {positions.map((position) => {
+                                    const positionResult = testPositionResults.find((pr) => pr.position === position);
+                                    const positionStatusColor = positionResult?.status === "pass"
+                                      ? "border-green-300 bg-green-50"
+                                      : positionResult?.status === "fail"
+                                      ? "border-red-300 bg-red-50"
+                                      : "border-gray-200";
+
+                                    return (
+                                      <div
+                                        key={position}
+                                        className={`p-3 rounded-lg border ${positionStatusColor}`}
+                                      >
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="font-medium text-gray-900">{position}</span>
+                                          {positionResult?.status && (
+                                            <span className={`text-xs px-2 py-0.5 rounded ${
+                                              positionResult.status === "pass"
+                                                ? "bg-green-100 text-green-800"
+                                                : positionResult.status === "fail"
+                                                ? "bg-red-100 text-red-800"
+                                                : "bg-gray-100 text-gray-600"
+                                            }`}>
+                                              {positionResult.status === "pass" ? "PASS" : positionResult.status === "fail" ? "FAIL" : "N/A"}
+                                              {positionResult.deviation !== undefined && (
+                                                <span className="ml-1">
+                                                  ({positionResult.deviation >= 0 ? "+" : ""}{positionResult.deviation.toFixed(2)})
+                                                </span>
+                                              )}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <div className="flex-1">
+                                            <label className="text-xs text-gray-500 block mb-1">Expected (mm)</label>
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              placeholder="Ref"
+                                              value={positionResult?.baseline_value ?? ""}
+                                              onChange={(e) =>
+                                                updatePositionBaseline(
+                                                  test.test_id,
+                                                  position,
+                                                  e.target.value ? parseFloat(e.target.value) : undefined,
+                                                  test
+                                                )
+                                              }
+                                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md bg-gray-50"
+                                            />
+                                          </div>
+                                          <div className="flex-1">
+                                            <label className="text-xs text-gray-500 block mb-1">Measured (mm)</label>
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              placeholder="Value"
+                                              value={positionResult?.measurement ?? ""}
+                                              onChange={(e) =>
+                                                updatePositionMeasurement(
+                                                  test.test_id,
+                                                  position,
+                                                  e.target.value ? parseFloat(e.target.value) : undefined,
+                                                  test
+                                                )
+                                              }
+                                              className={`w-full px-2 py-1.5 text-sm border rounded-md ${
+                                                positionResult?.status === "pass"
+                                                  ? "border-green-300"
+                                                  : positionResult?.status === "fail"
+                                                  ? "border-red-300"
+                                                  : "border-gray-300"
+                                              }`}
+                                            />
+                                          </div>
+                                        </div>
+                                        {positionResult?.measurement !== undefined && (
+                                          <button
+                                            type="button"
+                                            onClick={() => savePositionBaseline(test.test_id, position, positionResult.measurement!)}
                                             className="mt-2 w-full px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200"
                                           >
                                             Set as Baseline

@@ -131,6 +131,7 @@ export async function POST(request: NextRequest) {
       photon_energies,
       electron_energies,
       detector_heads,
+      source_position_checks,
     } = body as {
       name: string;
       equipment_type: EquipmentType;
@@ -142,6 +143,7 @@ export async function POST(request: NextRequest) {
       photon_energies?: string[];
       electron_energies?: string[];
       detector_heads?: number;
+      source_position_checks?: number;
     };
 
     if (!name || !equipment_type) {
@@ -179,6 +181,7 @@ export async function POST(request: NextRequest) {
         electron_energies: electron_energies || [],
         fff_energies: [],
         detector_heads: detector_heads || null,
+        source_position_checks: source_position_checks || null,
         active: true,
         metadata: {},
       })
