@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { CalculatorType, QAStatus, BaselineValues } from "@/types/database";
 
 // Ir-192 half-life in days
@@ -236,6 +236,7 @@ export function DwellTimeCalculator({ testId, tolerance, actionLevel, initialVal
   const initVals = initialValues as { set_time?: number } | undefined;
   const [setTime, setSetTime] = useState<string>(initVals?.set_time?.toString() || "");
   const [measuredTime, setMeasuredTime] = useState<string>("");
+  const [showStopwatch, setShowStopwatch] = useState(false);
 
   const calculate = useCallback(() => {
     const set = parseFloat(setTime);
@@ -270,21 +271,46 @@ export function DwellTimeCalculator({ testId, tolerance, actionLevel, initialVal
     }
   };
 
+  const handleTimeCapture = (timeInSeconds: number) => {
+    setMeasuredTime(timeInSeconds.toFixed(2));
+  };
+
   return (
     <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
       <div className="flex items-center justify-between mb-2">
         <div className="text-xs font-medium text-gray-500">Dwell Time Accuracy</div>
-        {onSaveBaseline && (
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handleSaveBaseline}
-            disabled={!setTime}
-            className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => setShowStopwatch(!showStopwatch)}
+            className={`text-xs px-2 py-1 rounded transition-colors ${
+              showStopwatch
+                ? "bg-gray-800 text-green-400"
+                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+            }`}
           >
-            Save Set Time
+            {showStopwatch ? "Hide Stopwatch" : "Show Stopwatch"}
           </button>
-        )}
+          {onSaveBaseline && (
+            <button
+              type="button"
+              onClick={handleSaveBaseline}
+              disabled={!setTime}
+              className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Save Set Time
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Inline Stopwatch */}
+      {showStopwatch && (
+        <div className="mb-3">
+          <InlineStopwatch onTimeCapture={handleTimeCapture} />
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="number"
@@ -309,6 +335,70 @@ export function DwellTimeCalculator({ testId, tolerance, actionLevel, initialVal
             ? `${(((parseFloat(measuredTime) - parseFloat(setTime)) / parseFloat(setTime)) * 100).toFixed(2)}%`
             : "--%"}
         </span>
+      </div>
+    </div>
+  );
+}
+
+// Compact inline stopwatch for embedding in calculators
+function InlineStopwatch({ onTimeCapture }: { onTimeCapture: (time: number) => void }) {
+  const [time, setTime] = useState(0); // centiseconds
+  const [isRunning, setIsRunning] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (isRunning) {
+      intervalRef.current = setInterval(() => {
+        setTime((prev) => prev + 1);
+      }, 10);
+    } else if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isRunning]);
+
+  const formatTime = (cs: number) => {
+    const minutes = Math.floor(cs / 6000);
+    const seconds = Math.floor((cs % 6000) / 100);
+    const centis = cs % 100;
+    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${centis.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="bg-gray-900 rounded-lg p-3 text-white">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-mono text-2xl font-bold tracking-wider text-green-400">
+          {formatTime(time)}
+          <span className="text-xs text-gray-400 ml-2">({(time / 100).toFixed(2)}s)</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setIsRunning(!isRunning)}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              isRunning ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"
+            }`}
+          >
+            {isRunning ? "Stop" : "Start"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setIsRunning(false); setTime(0); }}
+            className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 rounded text-sm font-medium transition-colors"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={() => onTimeCapture(time / 100)}
+            disabled={time === 0}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 rounded text-sm font-medium transition-colors"
+          >
+            Use Time
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1163,6 +1253,197 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Stopwatch Component
+// For timing dwell times and other measurements
+// ============================================================================
+interface StopwatchProps {
+  onTimeCapture?: (timeInSeconds: number) => void;
+  compact?: boolean;
+}
+
+export function Stopwatch({ onTimeCapture, compact = false }: StopwatchProps) {
+  const [time, setTime] = useState(0); // time in centiseconds (1/100 sec)
+  const [isRunning, setIsRunning] = useState(false);
+  const [laps, setLaps] = useState<{ time: number; label: string }[]>([]);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (isRunning) {
+      intervalRef.current = setInterval(() => {
+        setTime((prev) => prev + 1);
+      }, 10); // Update every 10ms for centiseconds
+    } else if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isRunning]);
+
+  const formatTime = (centiseconds: number) => {
+    const hours = Math.floor(centiseconds / 360000);
+    const minutes = Math.floor((centiseconds % 360000) / 6000);
+    const seconds = Math.floor((centiseconds % 6000) / 100);
+    const cs = centiseconds % 100;
+
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${cs.toString().padStart(2, "0")}`;
+    }
+    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${cs.toString().padStart(2, "0")}`;
+  };
+
+  const getTimeInSeconds = () => {
+    return time / 100;
+  };
+
+  const handleStartStop = () => {
+    setIsRunning(!isRunning);
+  };
+
+  const handleReset = () => {
+    setIsRunning(false);
+    setTime(0);
+    setLaps([]);
+  };
+
+  const handleLap = () => {
+    if (time > 0) {
+      const lapNumber = laps.length + 1;
+      setLaps([...laps, { time, label: `Lap ${lapNumber}` }]);
+    }
+  };
+
+  const handleCapture = () => {
+    if (onTimeCapture && time > 0) {
+      onTimeCapture(getTimeInSeconds());
+    }
+  };
+
+  const deleteLap = (index: number) => {
+    setLaps(laps.filter((_, i) => i !== index));
+  };
+
+  if (compact) {
+    return (
+      <div className="bg-gray-900 rounded-lg p-3 text-white">
+        <div className="flex items-center justify-between gap-3">
+          <div className="font-mono text-2xl font-bold tracking-wider text-green-400">
+            {formatTime(time)}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleStartStop}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                isRunning
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-green-600 hover:bg-green-700"
+              }`}
+            >
+              {isRunning ? "Stop" : "Start"}
+            </button>
+            <button
+              onClick={handleReset}
+              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 rounded text-sm font-medium transition-colors"
+            >
+              Reset
+            </button>
+            {onTimeCapture && (
+              <button
+                onClick={handleCapture}
+                disabled={time === 0}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 rounded text-sm font-medium transition-colors"
+              >
+                Use Time
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-900 rounded-lg p-4 text-white">
+      {/* Timer Display */}
+      <div className="text-center mb-4">
+        <div className="font-mono text-4xl sm:text-5xl font-bold tracking-wider text-green-400 py-4">
+          {formatTime(time)}
+        </div>
+        <div className="text-xs text-gray-400">
+          {getTimeInSeconds().toFixed(2)} seconds
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-wrap justify-center gap-2 mb-4">
+        <button
+          onClick={handleStartStop}
+          className={`px-6 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            isRunning
+              ? "bg-red-600 hover:bg-red-700"
+              : "bg-green-600 hover:bg-green-700"
+          }`}
+        >
+          {isRunning ? "Stop" : "Start"}
+        </button>
+        <button
+          onClick={handleLap}
+          disabled={time === 0}
+          className="px-6 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-semibold transition-colors"
+        >
+          Lap
+        </button>
+        <button
+          onClick={handleReset}
+          className="px-6 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm font-semibold transition-colors"
+        >
+          Reset
+        </button>
+        {onTimeCapture && (
+          <button
+            onClick={handleCapture}
+            disabled={time === 0}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-semibold transition-colors"
+          >
+            Use Time
+          </button>
+        )}
+      </div>
+
+      {/* Laps */}
+      {laps.length > 0 && (
+        <div className="border-t border-gray-700 pt-3">
+          <h4 className="text-xs uppercase text-gray-400 mb-2 font-semibold">Recorded Laps</h4>
+          <div className="max-h-40 overflow-y-auto space-y-1">
+            {laps.map((lap, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between bg-gray-800 rounded px-3 py-1.5 text-sm"
+              >
+                <span className="text-gray-400">{lap.label}</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-green-400">{formatTime(lap.time)}</span>
+                  <span className="text-gray-500 text-xs">({(lap.time / 100).toFixed(2)}s)</span>
+                  <button
+                    onClick={() => deleteLap(index)}
+                    className="text-red-400 hover:text-red-300 text-xs"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

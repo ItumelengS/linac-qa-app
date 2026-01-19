@@ -8,10 +8,11 @@ import {
   DwellTimeCalculator,
   TimerLinearityCalculator,
   PercentageDifferenceCalculator,
+  Stopwatch,
   CalculatorResult,
 } from "@/components/qa-calculators";
 
-type CalculatorCategory = "brachytherapy" | "general";
+type CalculatorCategory = "brachytherapy" | "general" | "tools";
 
 interface CalculatorInfo {
   id: string;
@@ -75,6 +76,7 @@ export default function CalculatorsPage() {
   const [selectedCalculator, setSelectedCalculator] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, CalculatorResult>>({});
   const [categoryFilter, setCategoryFilter] = useState<CalculatorCategory | "all">("all");
+  const [showStopwatch, setShowStopwatch] = useState(false);
 
   const handleUpdate = (calculatorId: string) => (result: CalculatorResult) => {
     setResults((prev) => ({ ...prev, [calculatorId]: result }));
@@ -129,6 +131,16 @@ export default function CalculatorsPage() {
         >
           General
         </button>
+        <button
+          onClick={() => setCategoryFilter("tools")}
+          className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            categoryFilter === "tools"
+              ? "bg-green-600 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          Tools
+        </button>
       </div>
 
       {/* Brachytherapy Section */}
@@ -175,6 +187,51 @@ export default function CalculatorsPage() {
                 result={results[calc.id]}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tools Section */}
+      {(categoryFilter === "all" || categoryFilter === "tools") && (
+        <div>
+          <h2 className="text-lg font-semibold text-green-800 mb-3 flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Tools
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Stopwatch Tool */}
+            <div className={`bg-white rounded-lg border-2 transition-all ${
+              showStopwatch ? "border-green-500 shadow-lg" : "border-gray-200 hover:border-gray-300"
+            }`}>
+              <button
+                onClick={() => setShowStopwatch(!showStopwatch)}
+                className="w-full px-3 sm:px-4 py-3 sm:py-4 flex items-start sm:items-center justify-between text-left gap-3"
+              >
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900">Stopwatch</h3>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+                    Precision timer for dwell time measurements and QA timing tests
+                  </p>
+                </div>
+                <svg
+                  className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ${showStopwatch ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showStopwatch && (
+                <div className="px-2 sm:px-4 pb-3 sm:pb-4 border-t border-gray-100">
+                  <div className="pt-3">
+                    <Stopwatch />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
