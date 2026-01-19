@@ -536,3 +536,166 @@ export const INSTRUMENT_TYPE_LABELS: Record<InstrumentType, string> = {
   phantom: "Phantom",
   other: "Other",
 };
+
+// Radioactive Source Types
+export type SourceStatus =
+  | "active"
+  | "stored"
+  | "lost"
+  | "stolen"
+  | "discarded"
+  | "transferred"
+  | "decayed";
+
+export type SourceCategory =
+  | "nuclear_medicine"
+  | "therapy"
+  | "brachytherapy"
+  | "reference_source"
+  | "medical_physics"
+  | "calibration";
+
+export type SourceForm =
+  | "sealed"
+  | "liquid"
+  | "capsule"
+  | "gas"
+  | "wire"
+  | "seeds"
+  | "generator"
+  | "other";
+
+export interface RadioactiveSource {
+  id: string;
+  organization_id: string;
+
+  // Source identification
+  radionuclide: string;
+  source_form: SourceForm;
+  description?: string;
+
+  // Serial numbers
+  serial_number?: string;
+  container_serial?: string;
+  license_item_number?: number;
+
+  // Activity
+  initial_activity: number;
+  activity_unit: string;
+  calibration_date: string;
+  half_life_days?: number;
+
+  // Classification
+  category: SourceCategory;
+  room_type?: string;
+
+  // Location
+  location_building?: string;
+  location_floor?: string;
+  location_room?: string;
+  location_department?: string;
+  location_detail?: string;
+
+  // Status
+  status: SourceStatus;
+  status_changed_at?: string;
+  status_changed_by?: string;
+  status_notes?: string;
+
+  // Acquisition/Disposal
+  acquired_date?: string;
+  acquired_from?: string;
+  disposed_date?: string;
+  disposed_method?: string;
+  disposal_certificate?: string;
+
+  // Transfer
+  transferred_to?: string;
+  transfer_date?: string;
+  transfer_authorization?: string;
+
+  // Metadata
+  notes?: string;
+  metadata: Record<string, unknown>;
+
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+
+  // Computed fields (from view)
+  effective_half_life?: number;
+  half_life_display?: string;
+  decay_mode?: string;
+  current_activity?: number;
+  days_since_calibration?: number;
+}
+
+export interface SourceStatusHistory {
+  id: string;
+  source_id: string;
+  old_status?: SourceStatus;
+  new_status: SourceStatus;
+  old_location_room?: string;
+  new_location_room?: string;
+  old_location_department?: string;
+  new_location_department?: string;
+  change_reason?: string;
+  changed_by?: string;
+  changed_by_name?: string;
+  changed_at: string;
+}
+
+export interface RadionuclideData {
+  radionuclide: string;
+  half_life_days: number;
+  half_life_display?: string;
+  decay_mode?: string;
+  gamma_energy_kev?: number;
+  common_use?: string;
+}
+
+export const SOURCE_STATUS_LABELS: Record<SourceStatus, string> = {
+  active: "Active",
+  stored: "Stored",
+  lost: "Lost",
+  stolen: "Stolen",
+  discarded: "Discarded",
+  transferred: "Transferred",
+  decayed: "Decayed",
+};
+
+export const SOURCE_CATEGORY_LABELS: Record<SourceCategory, string> = {
+  nuclear_medicine: "Nuclear Medicine",
+  therapy: "Therapy",
+  brachytherapy: "Brachytherapy",
+  reference_source: "Reference Source",
+  medical_physics: "Medical Physics",
+  calibration: "Calibration",
+};
+
+export const SOURCE_FORM_LABELS: Record<SourceForm, string> = {
+  sealed: "Sealed Source",
+  liquid: "Liquid",
+  capsule: "Capsule",
+  gas: "Gas",
+  wire: "Wire",
+  seeds: "Seeds",
+  generator: "Generator",
+  other: "Other",
+};
+
+// Common radionuclides for quick selection
+export const COMMON_RADIONUCLIDES = [
+  // Nuclear Medicine - Short
+  "Tc-99m", "F-18", "Ga-68", "I-123", "In-111", "Tl-201",
+  // Nuclear Medicine - Medium
+  "I-131", "Ga-67", "Cr-51",
+  // Therapy
+  "Sr-89", "Sr-90", "Y-90", "P-32", "I-125",
+  // Brachytherapy
+  "Ir-192", "Pd-103", "Cs-131",
+  // Reference/Calibration
+  "Cs-137", "Co-60", "Co-57", "Am-241", "Ba-133", "Ra-226",
+  // Other
+  "Xe-133", "H-3", "C-14",
+];
