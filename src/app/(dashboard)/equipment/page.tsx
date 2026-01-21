@@ -452,10 +452,8 @@ function BaselineSettingsModal({
     source_serial: "",
   });
 
-  // Position deviation defaults
-  const [positionData, setPositionData] = useState<PositionDeviationBaseline>({
-    expected_position: 0,
-  });
+  // Position deviation defaults - one per position (Position_1, Position_2, etc.)
+  const [positionData, setPositionData] = useState<Record<string, number>>({});
 
   // Dwell time defaults
   const [dwellTimeData, setDwellTimeData] = useState<DwellTimeBaseline>({
@@ -609,11 +607,18 @@ function BaselineSettingsModal({
               });
             }
 
-            const positionBaseline = data.baselines?.DBR10;
-            if (positionBaseline?.values) {
-              const vals = positionBaseline.values as PositionDeviationBaseline;
-              setPositionData({ expected_position: vals.expected_position || 0 });
+            // Load position-specific baselines (DBR10_Position_1, DBR10_Position_2, etc.)
+            const numPositions = equipment.source_position_checks || 1;
+            const loadedPositions: Record<string, number> = {};
+            for (let i = 1; i <= numPositions; i++) {
+              const posKey = `DBR10_Position_${i}`;
+              const posBaseline = data.baselines?.[posKey];
+              if (posBaseline?.values) {
+                const vals = posBaseline.values as PositionDeviationBaseline;
+                loadedPositions[`Position_${i}`] = vals.expected_position || 0;
+              }
             }
+            setPositionData(loadedPositions);
 
             const dwellBaseline = data.baselines?.DBR11;
             if (dwellBaseline?.values) {
@@ -819,10 +824,17 @@ function BaselineSettingsModal({
           savePromises.push(saveBaseline("QBR4", { reference_value: sourceData.initial_activity }, source_serial));
         }
 
-        if (positionData.expected_position) {
-          savePromises.push(saveBaseline("DBR10", positionData));
-          savePromises.push(saveBaseline("QBR5", positionData));
-          savePromises.push(saveBaseline("ABR2", positionData));
+        // Save position-specific baselines (DBR10_Position_1, DBR10_Position_2, etc.)
+        const numPositions = equipment.source_position_checks || 1;
+        for (let i = 1; i <= numPositions; i++) {
+          const posKey = `Position_${i}`;
+          const expectedPos = positionData[posKey];
+          if (expectedPos !== undefined && expectedPos !== 0) {
+            const posValues = { expected_position: expectedPos };
+            savePromises.push(saveBaseline(`DBR10_${posKey}`, posValues));
+            savePromises.push(saveBaseline(`QBR5_${posKey}`, posValues));
+            savePromises.push(saveBaseline(`ABR2_${posKey}`, posValues));
+          }
         }
 
         if (dwellTimeData.set_time) {
@@ -1037,17 +1049,30 @@ function BaselineSettingsModal({
       {/* Position Deviation */}
       <div className="border-b pb-6">
         <h3 className="font-medium text-gray-900 mb-1">Position Deviation Defaults</h3>
-        <p className="text-sm text-gray-500 mb-4">Default expected position for source position verification tests.</p>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Expected Position (mm)</label>
-          <input
-            type="number"
-            step="0.1"
-            value={positionData.expected_position || ""}
-            onChange={(e) => setPositionData({ expected_position: parseFloat(e.target.value) || 0 })}
-            className="w-48 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            placeholder="e.g., 100.0"
-          />
+        <p className="text-sm text-gray-500 mb-4">
+          Expected positions for source position verification tests (DBR10).
+          {equipment.source_position_checks && equipment.source_position_checks > 1 &&
+            ` Configure ${equipment.source_position_checks} positions.`}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: equipment.source_position_checks || 1 }, (_, i) => i + 1).map((posNum) => (
+            <div key={posNum}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Position {posNum} (mm)
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={positionData[`Position_${posNum}`] || ""}
+                onChange={(e) => setPositionData(prev => ({
+                  ...prev,
+                  [`Position_${posNum}`]: parseFloat(e.target.value) || 0
+                }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder={`e.g., ${100 + (posNum - 1) * 50}`}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
