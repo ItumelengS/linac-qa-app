@@ -457,7 +457,9 @@ function QAFormContent() {
 
           // Initialize position-specific results for brachytherapy source positioning tests
           if (isPositionSpecificTest(test.test_id, test.description, data.equipment.equipment_type)) {
+            console.log("Equipment source_position_checks:", data.equipment.source_position_checks);
             const positions = getPositionLabels(data.equipment);
+            console.log("Position labels:", positions);
             initialPositionResults[test.test_id] = positions.map(position => ({
               position,
               measurement: undefined,
@@ -2028,6 +2030,7 @@ function QAFormContent() {
                           /* Position-specific test - show inputs for each position (brachytherapy) */
                           (() => {
                             const positions = getPositionLabels(equipment);
+                            console.log("Render - Equipment source_position_checks:", equipment.source_position_checks, "Positions:", positions);
                             const testPositionResults = positionResults[test.test_id] || [];
 
                             return (
