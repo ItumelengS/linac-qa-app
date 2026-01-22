@@ -1691,8 +1691,8 @@ function QAFormContent() {
                           </div>
                         </div>
 
-                        {/* Inline Calculator for tests with calculator_type */}
-                        {test.calculator_type ? (
+                        {/* Inline Calculator for tests with calculator_type (except position-specific tests) */}
+                        {test.calculator_type && !(equipment && isPositionSpecificTest(test.test_id, test.description, equipment.equipment_type)) ? (
                           <div className="space-y-3">
                             <InlineCalculator
                               calculatorType={test.calculator_type}
