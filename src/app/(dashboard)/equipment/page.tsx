@@ -1944,9 +1944,12 @@ export default function EquipmentPage() {
   };
 
   const handleEquipmentUpdated = (updated: Equipment) => {
+    // Update local state immediately for responsiveness
     setEquipment((prev) =>
       prev.map((item) => (item.id === updated.id ? updated : item))
     );
+    // Also refetch to ensure we have fresh data from the database
+    fetchEquipment();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
