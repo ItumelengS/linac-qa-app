@@ -2420,7 +2420,7 @@ export default function EquipmentPage() {
       {/* Edit Equipment Modal */}
       {editingEquipment && (
         <EditEquipmentModal
-          equipment={editingEquipment}
+          equipment={equipment.find(e => e.id === editingEquipment.id) || editingEquipment}
           onClose={() => setEditingEquipment(null)}
           onSave={handleEquipmentUpdated}
         />
@@ -2429,7 +2429,7 @@ export default function EquipmentPage() {
       {/* Baseline Settings Modal */}
       {selectedEquipment && (
         <BaselineSettingsModal
-          equipment={selectedEquipment}
+          equipment={equipment.find(e => e.id === selectedEquipment.id) || selectedEquipment}
           onClose={() => setSelectedEquipment(null)}
         />
       )}
