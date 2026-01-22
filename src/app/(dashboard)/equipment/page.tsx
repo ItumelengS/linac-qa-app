@@ -1051,11 +1051,10 @@ function BaselineSettingsModal({
         <h3 className="font-medium text-gray-900 mb-1">Position Deviation Defaults</h3>
         <p className="text-sm text-gray-500 mb-4">
           Expected positions for source position verification tests (DBR10).
-          {equipment.source_position_checks && equipment.source_position_checks > 1 &&
-            ` Configure ${equipment.source_position_checks} positions.`}
+          {` Configure ${equipment.source_position_checks || 1} position(s).`}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: equipment.source_position_checks || 1 }, (_, i) => i + 1).map((posNum) => (
+          {Array.from({ length: Number(equipment.source_position_checks) || 1 }, (_, i) => i + 1).map((posNum) => (
             <div key={posNum}>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Position {posNum} (mm)
