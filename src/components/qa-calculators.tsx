@@ -869,10 +869,93 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   const [reportSaveMessage, setReportSaveMessage] = useState<string | null>(null);
   const [showPrintReport, setShowPrintReport] = useState(false);
 
-  // Measurement values (3 readings at sweet spot)
-  const [readings, setReadings] = useState<string[]>(["", "", ""]);
-  const [measuredTemp, setMeasuredTemp] = useState<string>("");
-  const [measuredPressure, setMeasuredPressure] = useState<string>("");
+  // Effect to sync state with initialValues when baselines are loaded
+  useEffect(() => {
+    if (initialValues) {
+      const vals = initialValues as typeof initVals;
+      if (vals?.chamber_factor_nsk !== undefined) setChamberNsk(vals.chamber_factor_nsk.toString());
+      if (vals?.electrometer_factor !== undefined) setElectrometerFactor(vals.electrometer_factor.toString());
+      if (vals?.applicator_factor !== undefined) setApplicatorFactor(vals.applicator_factor.toString());
+      if (vals?.source_factor !== undefined) setSourceFactor(vals.source_factor.toString());
+      if (vals?.reference_temperature !== undefined) setRefTemp(vals.reference_temperature.toString());
+      if (vals?.reference_pressure !== undefined) setRefPressure(vals.reference_pressure.toString());
+      if (vals?.certificate_srak !== undefined) setCertSRAK(vals.certificate_srak.toString());
+      if (vals?.certificate_date) setCertDate(vals.certificate_date);
+      if (vals?.sweet_spot_position !== undefined) setSweetSpotPosition(vals.sweet_spot_position.toString());
+      if (vals?.source_serial) setSourceSerial(vals.source_serial);
+      if (vals?.certificate_number) setCertNumber(vals.certificate_number);
+      if (vals?.chamber_model) setChamberModel(vals.chamber_model);
+      if (vals?.chamber_serial) setChamberSerial(vals.chamber_serial);
+      if (vals?.electrometer_model) setElectrometerModel(vals.electrometer_model);
+      if (vals?.electrometer_serial) setElectrometerSerial(vals.electrometer_serial);
+      if (vals?.applicator_type) setApplicatorType(vals.applicator_type);
+      if (vals?.source_model) setSourceModel(vals.source_model);
+      if (vals?.source_radionuclide) setSourceRadionuclide(vals.source_radionuclide);
+    }
+  }, [initialValues]);
+
+  // Measurement values (3 readings at sweet spot) - persist in localStorage
+  const storageKey = equipmentId ? `srak_measurements_${equipmentId}` : null;
+
+  const [readings, setReadings] = useState<string[]>(() => {
+    if (typeof window !== 'undefined' && storageKey) {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.readings || ["", "", ""];
+        } catch { /* ignore */ }
+      }
+    }
+    return ["", "", ""];
+  });
+
+  const [measuredTemp, setMeasuredTemp] = useState<string>(() => {
+    if (typeof window !== 'undefined' && storageKey) {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.measuredTemp || "";
+        } catch { /* ignore */ }
+      }
+    }
+    return "";
+  });
+
+  const [measuredPressure, setMeasuredPressure] = useState<string>(() => {
+    if (typeof window !== 'undefined' && storageKey) {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.measuredPressure || "";
+        } catch { /* ignore */ }
+      }
+    }
+    return "";
+  });
+
+  // Persist measurement values to localStorage
+  useEffect(() => {
+    if (storageKey && typeof window !== 'undefined') {
+      localStorage.setItem(storageKey, JSON.stringify({
+        readings,
+        measuredTemp,
+        measuredPressure,
+      }));
+    }
+  }, [readings, measuredTemp, measuredPressure, storageKey]);
+
+  // Reset measurements function
+  const resetMeasurements = () => {
+    setReadings(["", "", ""]);
+    setMeasuredTemp("");
+    setMeasuredPressure("");
+    if (storageKey && typeof window !== 'undefined') {
+      localStorage.removeItem(storageKey);
+    }
+  };
 
   const updateReading = (index: number, value: string) => {
     const newReadings = [...readings];
@@ -1534,11 +1617,20 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
       <div className="mb-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
           <div className="text-xs font-medium text-gray-400">Measurements at Sweet Spot</div>
-          {sweetSpotPosition && (
-            <div className="text-xs text-purple-600 font-medium">
-              Position: {sweetSpotPosition} mm
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {sweetSpotPosition && (
+              <div className="text-xs text-purple-600 font-medium">
+                Position: {sweetSpotPosition} mm
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={resetMeasurements}
+              className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+            >
+              Reset Readings
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-2 mb-2">
           {readings.map((r, i) => (
