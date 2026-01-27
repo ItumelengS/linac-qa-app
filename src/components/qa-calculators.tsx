@@ -696,48 +696,100 @@ export function SourceDecayCheckCalculator({ testId, tolerance, actionLevel, ini
 // ============================================================================
 // SRAK Calculator (Source Reference Air Kerma Rate)
 // HDR Brachytherapy source strength verification using well chamber
-// Sk = M × Nsk × kTP × kelec
+// Sk = M × Nsk × kTP × kelec × k_applicator
 // Includes sweet spot determination (coarse + fine scan)
 // ============================================================================
-export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline }: CalculatorProps) {
+interface SRAKCalculatorProps extends CalculatorProps {
+  equipmentId?: string;
+  onSaveSRAKReport?: (data: SRAKReportData) => Promise<void>;
+}
+
+export interface SRAKReportData {
+  equipment_id: string;
+  source_serial?: string;
+  source_radionuclide?: string;
+  certificate_srak: number;
+  certificate_date: string;
+  certificate_number?: string;
+  chamber_model?: string;
+  chamber_serial?: string;
+  chamber_factor_nsk: number;
+  electrometer_model?: string;
+  electrometer_serial?: string;
+  electrometer_factor: number;
+  applicator_factor: number;
+  applicator_type?: string;
+  sweet_spot_position?: number;
+  sweet_spot_method?: string;
+  measured_temperature?: number;
+  measured_pressure?: number;
+  reference_temperature: number;
+  reference_pressure: number;
+  reading_1?: number;
+  reading_2?: number;
+  reading_3?: number;
+  measurement_date: string;
+  notes?: string;
+}
+
+export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline, equipmentId, onSaveSRAKReport }: SRAKCalculatorProps) {
   const initVals = initialValues as {
     chamber_factor_nsk?: number;
     electrometer_factor?: number;
+    applicator_factor?: number;
+    applicator_type?: string;
     reference_temperature?: number;
     reference_pressure?: number;
     certificate_srak?: number;
     certificate_date?: string;
     sweet_spot_position?: number;
+    chamber_model?: string;
+    chamber_serial?: string;
+    electrometer_model?: string;
+    electrometer_serial?: string;
+    source_serial?: string;
+    certificate_number?: string;
   } | undefined;
 
   // Sweet spot determination state
   const [showSweetSpot, setShowSweetSpot] = useState<boolean>(false);
   const [sweetSpotPhase, setSweetSpotPhase] = useState<"coarse" | "fine" | "complete">("coarse");
-  const [coarseStartPos, setCoarseStartPos] = useState<string>("960");
+  const [coarseStartPos, setCoarseStartPos] = useState<string>("130");
+  const [coarseNumStops, setCoarseNumStops] = useState<string>("9");
+  const [coarseStepSize, setCoarseStepSize] = useState<string>("5");
+  const [fineNumStops, setFineNumStops] = useState<string>("11");
+  const [fineStepSize, setFineStepSize] = useState<string>("1");
   const [coarseReadings, setCoarseReadings] = useState<{ position: number; reading: string }[]>([]);
   const [fineReadings, setFineReadings] = useState<{ position: number; reading: string }[]>([]);
   const [sweetSpotPosition, setSweetSpotPosition] = useState<string>(initVals?.sweet_spot_position?.toString() || "");
 
-  // Initialize coarse positions (9 positions at 5mm intervals over 40mm)
+  // Initialize coarse positions based on user-defined parameters
   const initializeCoarsePositions = useCallback(() => {
-    const start = parseFloat(coarseStartPos) || 960;
+    const start = parseFloat(coarseStartPos) || 130;
+    const numStops = parseInt(coarseNumStops) || 9;
+    const stepSize = parseFloat(coarseStepSize) || 5;
     const positions = [];
-    for (let i = 0; i < 9; i++) {
-      positions.push({ position: start + i * 5, reading: "" });
+    for (let i = 0; i < numStops; i++) {
+      positions.push({ position: start + i * stepSize, reading: "" });
     }
     setCoarseReadings(positions);
     setSweetSpotPhase("coarse");
-  }, [coarseStartPos]);
+  }, [coarseStartPos, coarseNumStops, coarseStepSize]);
 
-  // Initialize fine positions (11 positions at 1mm intervals, ±5mm around coarse max)
+  // Initialize fine positions based on user-defined parameters, centered around coarse max
   const initializeFinePositions = useCallback((centerPos: number) => {
+    const numStops = parseInt(fineNumStops) || 11;
+    const stepSize = parseFloat(fineStepSize) || 1;
     const positions = [];
-    for (let i = -5; i <= 5; i++) {
-      positions.push({ position: centerPos + i, reading: "" });
+    const halfRange = Math.floor(numStops / 2);
+    for (let i = -halfRange; i <= halfRange; i++) {
+      if (positions.length < numStops) {
+        positions.push({ position: centerPos + i * stepSize, reading: "" });
+      }
     }
     setFineReadings(positions);
     setSweetSpotPhase("fine");
-  }, []);
+  }, [fineNumStops, fineStepSize]);
 
   // Find max reading position from array
   const findMaxPosition = (readings: { position: number; reading: string }[]): number | null => {
@@ -787,10 +839,24 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   // Baseline values (chamber/certificate data)
   const [chamberNsk, setChamberNsk] = useState<string>(initVals?.chamber_factor_nsk?.toString() || "");
   const [electrometerFactor, setElectrometerFactor] = useState<string>(initVals?.electrometer_factor?.toString() || "1.000");
+  const [applicatorFactor, setApplicatorFactor] = useState<string>(initVals?.applicator_factor?.toString() || "1.029");
   const [refTemp, setRefTemp] = useState<string>(initVals?.reference_temperature?.toString() || "20");
   const [refPressure, setRefPressure] = useState<string>(initVals?.reference_pressure?.toString() || "101.325");
   const [certSRAK, setCertSRAK] = useState<string>(initVals?.certificate_srak?.toString() || "");
   const [certDate, setCertDate] = useState<string>(initVals?.certificate_date || "");
+
+  // Source and instrument identification
+  const [sourceSerial, setSourceSerial] = useState<string>(initVals?.source_serial || "");
+  const [certNumber, setCertNumber] = useState<string>(initVals?.certificate_number || "");
+  const [chamberModel, setChamberModel] = useState<string>(initVals?.chamber_model || "");
+  const [chamberSerial, setChamberSerial] = useState<string>(initVals?.chamber_serial || "");
+  const [electrometerModel, setElectrometerModel] = useState<string>(initVals?.electrometer_model || "");
+  const [electrometerSerial, setElectrometerSerial] = useState<string>(initVals?.electrometer_serial || "");
+  const [applicatorType, setApplicatorType] = useState<string>(initVals?.applicator_type || "");
+
+  // Save report state
+  const [savingReport, setSavingReport] = useState(false);
+  const [reportSaveMessage, setReportSaveMessage] = useState<string | null>(null);
 
   // Measurement values (3 readings at sweet spot)
   const [readings, setReadings] = useState<string[]>(["", "", ""]);
@@ -806,6 +872,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   const calculate = useCallback(() => {
     const nsk = parseFloat(chamberNsk);
     const kelec = parseFloat(electrometerFactor);
+    const kApp = parseFloat(applicatorFactor) || 1.029; // Default applicator factor
     const T0 = parseFloat(refTemp);
     const P0 = parseFloat(refPressure);
     const certValue = parseFloat(certSRAK);
@@ -828,9 +895,9 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
       kTP = ((273.15 + T) / (273.15 + T0)) * (P0 / P);
     }
 
-    // Calculate measured SRAK: Sk = M × Nsk × kTP × kelec
+    // Calculate measured SRAK: Sk = M × Nsk × kTP × kelec × k_applicator
     const kElec = isNaN(kelec) ? 1.0 : kelec;
-    const measuredSRAK = meanReading * nsk * kTP * kElec;
+    const measuredSRAK = meanReading * nsk * kTP * kElec * kApp;
 
     // If no certificate data, just show measured value
     if (isNaN(certValue) || !certDate) {
@@ -838,8 +905,8 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
       onUpdate({
         measurement: measuredSRAK,
         status: "",
-        notes: `Measured SRAK: ${measuredSRAK.toFixed(1)} μGy·m²·h⁻¹ (Mean M: ${meanReading.toFixed(2)} nA, kTP: ${kTP.toFixed(4)})${sweetSpotInfo}`,
-        calculatorData: { readings: readingValues, meanReading, nsk, kTP, kElec, measuredSRAK, sweetSpotPosition: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined },
+        notes: `Measured SRAK: ${measuredSRAK.toFixed(1)} μGy·m²·h⁻¹ (Mean M: ${meanReading.toFixed(2)} nA, kTP: ${kTP.toFixed(4)}, k_app: ${kApp.toFixed(3)})${sweetSpotInfo}`,
+        calculatorData: { readings: readingValues, meanReading, nsk, kTP, kElec, kApp, measuredSRAK, sweetSpotPosition: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined },
       });
       return;
     }
@@ -870,6 +937,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
         nsk,
         kTP,
         kElec,
+        kApp,
         measuredSRAK,
         decayedCert,
         daysElapsed,
@@ -878,7 +946,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
         sweetSpotPosition: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined,
       },
     });
-  }, [readings, chamberNsk, electrometerFactor, refTemp, refPressure, certSRAK, certDate, measuredTemp, measuredPressure, sweetSpotPosition, tolerance, actionLevel, onUpdate]);
+  }, [readings, chamberNsk, electrometerFactor, applicatorFactor, refTemp, refPressure, certSRAK, certDate, measuredTemp, measuredPressure, sweetSpotPosition, tolerance, actionLevel, onUpdate]);
 
   useEffect(() => {
     calculate();
@@ -889,6 +957,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   const meanReading = readingValues.length > 0 ? readingValues.reduce((a, b) => a + b, 0) / readingValues.length : null;
 
   const nsk = parseFloat(chamberNsk);
+  const kApp = parseFloat(applicatorFactor) || 1.029;
   const T = parseFloat(measuredTemp);
   const P = parseFloat(measuredPressure);
   const T0 = parseFloat(refTemp);
@@ -901,7 +970,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   }
 
   const measuredSRAK = meanReading !== null && !isNaN(nsk) && kTP !== null
-    ? meanReading * nsk * kTP * kelec
+    ? meanReading * nsk * kTP * kelec * kApp
     : null;
 
   const certValue = parseFloat(certSRAK);
@@ -921,12 +990,65 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
       onSaveBaseline({
         chamber_factor_nsk: parseFloat(chamberNsk),
         electrometer_factor: parseFloat(electrometerFactor) || 1.0,
+        applicator_factor: parseFloat(applicatorFactor) || 1.029,
+        applicator_type: applicatorType || undefined,
         reference_temperature: parseFloat(refTemp) || 20,
         reference_pressure: parseFloat(refPressure) || 101.325,
         certificate_srak: parseFloat(certSRAK),
         certificate_date: certDate,
         sweet_spot_position: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined,
+        chamber_model: chamberModel || undefined,
+        chamber_serial: chamberSerial || undefined,
+        electrometer_model: electrometerModel || undefined,
+        electrometer_serial: electrometerSerial || undefined,
+        source_serial: sourceSerial || undefined,
+        certificate_number: certNumber || undefined,
       });
+    }
+  };
+
+  const handleSaveSRAKReport = async () => {
+    if (!onSaveSRAKReport || !equipmentId || !chamberNsk || !certSRAK || !certDate) return;
+
+    setSavingReport(true);
+    setReportSaveMessage(null);
+
+    try {
+      const reportData: SRAKReportData = {
+        equipment_id: equipmentId,
+        source_serial: sourceSerial || undefined,
+        source_radionuclide: "Ir-192",
+        certificate_srak: parseFloat(certSRAK),
+        certificate_date: certDate,
+        certificate_number: certNumber || undefined,
+        chamber_model: chamberModel || undefined,
+        chamber_serial: chamberSerial || undefined,
+        chamber_factor_nsk: parseFloat(chamberNsk),
+        electrometer_model: electrometerModel || undefined,
+        electrometer_serial: electrometerSerial || undefined,
+        electrometer_factor: parseFloat(electrometerFactor) || 1.0,
+        applicator_factor: parseFloat(applicatorFactor) || 1.029,
+        applicator_type: applicatorType || undefined,
+        sweet_spot_position: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined,
+        sweet_spot_method: sweetSpotPhase === "complete" ? "coarse_fine_scan" : sweetSpotPosition ? "manual" : undefined,
+        measured_temperature: parseFloat(measuredTemp) || undefined,
+        measured_pressure: parseFloat(measuredPressure) || undefined,
+        reference_temperature: parseFloat(refTemp) || 20,
+        reference_pressure: parseFloat(refPressure) || 101.325,
+        reading_1: parseFloat(readings[0]) || undefined,
+        reading_2: parseFloat(readings[1]) || undefined,
+        reading_3: parseFloat(readings[2]) || undefined,
+        measurement_date: new Date().toISOString().split("T")[0],
+      };
+
+      await onSaveSRAKReport(reportData);
+      setReportSaveMessage("SRAK report saved successfully!");
+      setTimeout(() => setReportSaveMessage(null), 3000);
+    } catch (error) {
+      console.error("Error saving SRAK report:", error);
+      setReportSaveMessage("Failed to save SRAK report");
+    } finally {
+      setSavingReport(false);
     }
   };
 
@@ -977,23 +1099,48 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
             {sweetSpotPhase === "coarse" && (
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                  <div className="text-xs font-medium text-purple-700">Phase 1: Coarse Scan (5mm steps)</div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="text-xs text-gray-500">Start:</label>
+                  <div className="text-xs font-medium text-purple-700">Phase 1: Coarse Scan</div>
+                  <button
+                    type="button"
+                    onClick={initializeCoarsePositions}
+                    className="text-xs px-2 py-1 bg-purple-200 text-purple-800 rounded hover:bg-purple-300"
+                  >
+                    Apply / Reset
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mb-2 p-2 bg-purple-100 rounded">
+                  <div className="flex items-center gap-1">
+                    <label className="text-xs text-gray-600">Start:</label>
                     <input
                       type="number"
                       value={coarseStartPos}
                       onChange={(e) => setCoarseStartPos(e.target.value)}
-                      className="w-16 sm:w-20 px-2 py-1 text-xs border border-gray-300 rounded"
+                      className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
                     />
                     <span className="text-xs text-gray-500">mm</span>
-                    <button
-                      type="button"
-                      onClick={initializeCoarsePositions}
-                      className="text-xs px-2 py-1 bg-purple-200 text-purple-800 rounded hover:bg-purple-300"
-                    >
-                      Reset
-                    </button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-xs text-gray-600">Stops:</label>
+                    <input
+                      type="number"
+                      min="3"
+                      max="20"
+                      value={coarseNumStops}
+                      onChange={(e) => setCoarseNumStops(e.target.value)}
+                      className="w-14 px-2 py-1 text-xs border border-gray-300 rounded"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-xs text-gray-600">Step:</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="1"
+                      value={coarseStepSize}
+                      onChange={(e) => setCoarseStepSize(e.target.value)}
+                      className="w-14 px-2 py-1 text-xs border border-gray-300 rounded"
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
@@ -1032,13 +1179,55 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
             {sweetSpotPhase === "fine" && (
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                  <div className="text-xs font-medium text-purple-700">Phase 2: Fine Scan (1mm around {coarseMaxPos}mm)</div>
+                  <div className="text-xs font-medium text-purple-700">Phase 2: Fine Scan (around {coarseMaxPos}mm)</div>
                   <button
                     type="button"
                     onClick={() => setSweetSpotPhase("coarse")}
                     className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 self-start sm:self-auto"
                   >
                     ← Back
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mb-2 p-2 bg-purple-100 rounded">
+                  <div className="flex items-center gap-1">
+                    <label className="text-xs text-gray-600">Stops:</label>
+                    <input
+                      type="number"
+                      min="3"
+                      max="21"
+                      value={fineNumStops}
+                      onChange={(e) => {
+                        setFineNumStops(e.target.value);
+                        if (coarseMaxPos !== null) {
+                          initializeFinePositions(coarseMaxPos);
+                        }
+                      }}
+                      className="w-14 px-2 py-1 text-xs border border-gray-300 rounded"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-xs text-gray-600">Step:</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      value={fineStepSize}
+                      onChange={(e) => {
+                        setFineStepSize(e.target.value);
+                        if (coarseMaxPos !== null) {
+                          initializeFinePositions(coarseMaxPos);
+                        }
+                      }}
+                      className="w-14 px-2 py-1 text-xs border border-gray-300 rounded"
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => coarseMaxPos !== null && initializeFinePositions(coarseMaxPos)}
+                    className="text-xs px-2 py-1 bg-purple-200 text-purple-800 rounded hover:bg-purple-300"
+                  >
+                    Apply
                   </button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
@@ -1112,10 +1301,37 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
         )}
       </div>
 
+      {/* Source Information */}
+      <div className="mb-3 p-2 bg-amber-50 rounded border border-amber-200">
+        <div className="text-xs font-medium text-amber-700 mb-2">Source Information</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-gray-500">Source Serial Number</label>
+            <input
+              type="text"
+              placeholder="Source S/N"
+              value={sourceSerial}
+              onChange={(e) => setSourceSerial(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Certificate Number</label>
+            <input
+              type="text"
+              placeholder="Cert #"
+              value={certNumber}
+              onChange={(e) => setCertNumber(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Chamber & Certificate Data (Baseline) */}
       <div className="mb-3 p-2 bg-white rounded border border-gray-100">
         <div className="text-xs font-medium text-gray-400 mb-2">Chamber & Certificate Data</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
           <div>
             <label className="text-xs text-gray-500">Nsk (μGy·m²·h⁻¹·nA⁻¹)</label>
             <input
@@ -1135,6 +1351,61 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
               placeholder="1.000"
               value={electrometerFactor}
               onChange={(e) => setElectrometerFactor(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">k_applicator</label>
+            <input
+              type="number"
+              step="0.001"
+              placeholder="1.029"
+              value={applicatorFactor}
+              onChange={(e) => setApplicatorFactor(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+          <div>
+            <label className="text-xs text-gray-500">Chamber Model</label>
+            <input
+              type="text"
+              placeholder="e.g., HDR 1000+"
+              value={chamberModel}
+              onChange={(e) => setChamberModel(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Chamber Serial</label>
+            <input
+              type="text"
+              placeholder="S/N"
+              value={chamberSerial}
+              onChange={(e) => setChamberSerial(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+          <div>
+            <label className="text-xs text-gray-500">Electrometer Model</label>
+            <input
+              type="text"
+              placeholder="e.g., MAX 4000"
+              value={electrometerModel}
+              onChange={(e) => setElectrometerModel(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Electrometer Serial</label>
+            <input
+              type="text"
+              placeholder="S/N"
+              value={electrometerSerial}
+              onChange={(e) => setElectrometerSerial(e.target.value)}
               className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -1240,18 +1511,55 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
 
       {/* Results */}
       <div className="p-2 sm:p-3 bg-blue-50 rounded border border-blue-100">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs sm:text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs sm:text-sm">
           <div>Mean M: <span className="font-mono">{meanReading !== null ? `${meanReading.toFixed(2)} nA` : "--"}</span></div>
           <div>k_TP: <span className="font-mono">{kTP !== null ? kTP.toFixed(4) : "--"}</span></div>
-          <div className="sm:col-span-1">Measured S_k: <span className="font-mono font-semibold text-blue-600 block sm:inline">{measuredSRAK !== null ? `${measuredSRAK.toFixed(1)}` : "--"}</span></div>
-          <div className="sm:col-span-1">Expected S_k: <span className="font-mono text-amber-600 block sm:inline">{decayedCert !== null ? `${decayedCert.toFixed(1)}` : "--"}</span></div>
-          <div className="col-span-1 sm:col-span-2 pt-1 border-t border-blue-200 mt-1">
+          <div>k_app: <span className="font-mono">{kApp.toFixed(3)}</span></div>
+          <div>Measured S_k: <span className="font-mono font-semibold text-blue-600">{measuredSRAK !== null ? `${measuredSRAK.toFixed(1)}` : "--"}</span></div>
+          <div>Expected S_k: <span className="font-mono text-amber-600">{decayedCert !== null ? `${decayedCert.toFixed(1)}` : "--"}</span></div>
+          <div className="col-span-2 sm:col-span-3 pt-1 border-t border-blue-200 mt-1">
             <span className="font-medium">Difference:</span> <span className={`font-mono font-bold text-base ${deviation !== null && Math.abs(deviation) > 3 ? "text-red-600" : "text-green-600"}`}>
               {deviation !== null ? `${deviation >= 0 ? "+" : ""}${deviation.toFixed(2)}%` : "--%"}
             </span>
             {daysElapsed !== null && <span className="text-xs text-gray-500 ml-2 block sm:inline">({daysElapsed.toFixed(0)}d since cal)</span>}
           </div>
         </div>
+
+        {/* Save SRAK Report Button */}
+        {onSaveSRAKReport && equipmentId && (
+          <div className="mt-3 pt-3 border-t border-blue-200">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={handleSaveSRAKReport}
+                disabled={savingReport || !measuredSRAK || !chamberNsk || !certSRAK || !certDate}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {savingReport ? (
+                  <>
+                    <span className="animate-spin">⏳</span>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Save SRAK Report
+                  </>
+                )}
+              </button>
+              {reportSaveMessage && (
+                <span className={`text-sm ${reportSaveMessage.includes("success") ? "text-green-600" : "text-red-600"}`}>
+                  {reportSaveMessage}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Saves a detailed SRAK measurement record with source and instrument details
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1459,9 +1767,12 @@ interface InlineCalculatorProps {
   initialValues?: BaselineValues;
   onUpdate: (result: CalculatorResult) => void;
   onSaveBaseline?: (values: BaselineValues) => void;
+  // SRAK-specific props
+  equipmentId?: string;
+  onSaveSRAKReport?: (data: SRAKReportData) => Promise<void>;
 }
 
-export function InlineCalculator({ calculatorType, testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline }: InlineCalculatorProps) {
+export function InlineCalculator({ calculatorType, testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline, equipmentId, onSaveSRAKReport }: InlineCalculatorProps) {
   const props = { testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline };
 
   switch (calculatorType) {
@@ -1478,7 +1789,7 @@ export function InlineCalculator({ calculatorType, testId, tolerance, actionLeve
     case "source_decay_check":
       return <SourceDecayCheckCalculator {...props} />;
     case "srak_calculation":
-      return <SRAKCalculator {...props} />;
+      return <SRAKCalculator {...props} equipmentId={equipmentId} onSaveSRAKReport={onSaveSRAKReport} />;
     default:
       return null;
   }

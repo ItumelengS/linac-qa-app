@@ -14,7 +14,7 @@ import {
   EQUIPMENT_TYPE_LABELS,
   FREQUENCY_LABELS,
 } from "@/types/database";
-import { InlineCalculator, CalculatorResult } from "@/components/qa-calculators";
+import { InlineCalculator, CalculatorResult, SRAKReportData } from "@/components/qa-calculators";
 
 interface TestResult {
   test_id: string;
@@ -1137,6 +1137,28 @@ function QAFormContent() {
     }
   };
 
+  // Handler for saving SRAK report with source details
+  const handleSaveSRAKReport = async (data: SRAKReportData) => {
+    try {
+      const response = await fetch("/api/srak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save SRAK report");
+      }
+
+      const result = await response.json();
+      console.log("SRAK report saved:", result.measurement);
+    } catch (err) {
+      console.error("Error saving SRAK report:", err);
+      throw err; // Re-throw to let the component handle the error
+    }
+  };
+
   // Handler for saving a single test's measurement as baseline
   const [savingBaselineFor, setSavingBaselineFor] = useState<string | null>(null);
 
@@ -1700,6 +1722,8 @@ function QAFormContent() {
                               initialValues={baselines[test.test_id]?.values}
                               onUpdate={(calcResult) => handleCalculatorUpdate(test.test_id, calcResult)}
                               onSaveBaseline={(values) => handleSaveBaseline(test.test_id, values)}
+                              equipmentId={equipment?.id}
+                              onSaveSRAKReport={test.calculator_type === "srak_calculation" ? handleSaveSRAKReport : undefined}
                             />
                             {/* Status display, override buttons, and Set as Baseline */}
                             <div className="flex flex-wrap items-center gap-3">
