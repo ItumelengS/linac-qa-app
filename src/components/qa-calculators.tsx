@@ -857,6 +857,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   // Save report state
   const [savingReport, setSavingReport] = useState(false);
   const [reportSaveMessage, setReportSaveMessage] = useState<string | null>(null);
+  const [showPrintReport, setShowPrintReport] = useState(false);
 
   // Measurement values (3 readings at sweet spot)
   const [readings, setReadings] = useState<string[]>(["", "", ""]);
@@ -1055,6 +1056,21 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   // Get max values for highlighting
   const coarseMaxPos = findMaxPosition(coarseReadings);
   const fineMaxPos = findMaxPosition(fineReadings);
+
+  // Print report handler
+  const handlePrintReport = () => {
+    setShowPrintReport(true);
+    setTimeout(() => window.print(), 100);
+  };
+
+  // Get result status for print report
+  const getResultStatus = () => {
+    if (deviation === null) return { text: "Incomplete", color: "gray" };
+    const absDeviation = Math.abs(deviation);
+    if (absDeviation <= 3) return { text: "PASS", color: "green" };
+    if (absDeviation <= 5) return { text: "ACTION REQUIRED", color: "yellow" };
+    return { text: "FAIL", color: "red" };
+  };
 
   return (
     <div className="mt-2 p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -1525,10 +1541,24 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
           </div>
         </div>
 
-        {/* Save SRAK Report Button */}
-        {onSaveSRAKReport && equipmentId && (
-          <div className="mt-3 pt-3 border-t border-blue-200">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        {/* Action Buttons */}
+        <div className="mt-3 pt-3 border-t border-blue-200">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Print Report Button - always available */}
+            <button
+              type="button"
+              onClick={handlePrintReport}
+              disabled={!measuredSRAK}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Print Report
+            </button>
+
+            {/* Save SRAK Report Button */}
+            {onSaveSRAKReport && equipmentId && (
               <button
                 type="button"
                 onClick={handleSaveSRAKReport}
@@ -1543,24 +1573,281 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                     </svg>
-                    Save SRAK Report
+                    Save to Database
                   </>
                 )}
               </button>
-              {reportSaveMessage && (
-                <span className={`text-sm ${reportSaveMessage.includes("success") ? "text-green-600" : "text-red-600"}`}>
-                  {reportSaveMessage}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Saves a detailed SRAK measurement record with source and instrument details
-            </p>
+            )}
+
+            {reportSaveMessage && (
+              <span className={`text-sm ${reportSaveMessage.includes("success") ? "text-green-600" : "text-red-600"}`}>
+                {reportSaveMessage}
+              </span>
+            )}
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Print Report Modal */}
+      {showPrintReport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 print:relative print:bg-transparent print:p-0">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none print:shadow-none print:rounded-none print:overflow-visible">
+            {/* Report Header */}
+            <div className="p-6 border-b-2 border-black print:p-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">SRAK Measurement Report</h1>
+                  <p className="text-gray-600">Source Reference Air Kerma Rate Verification</p>
+                </div>
+                <div className="text-right print:hidden">
+                  <button
+                    onClick={() => setShowPrintReport(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">Date:</span>
+                  <span className="ml-2 font-medium">{new Date().toLocaleDateString()}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Time:</span>
+                  <span className="ml-2 font-medium">{new Date().toLocaleTimeString()}</span>
+                </div>
+                <div className="ml-auto">
+                  <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                    getResultStatus().color === "green" ? "bg-green-100 text-green-800" :
+                    getResultStatus().color === "yellow" ? "bg-yellow-100 text-yellow-800" :
+                    getResultStatus().color === "red" ? "bg-red-100 text-red-800" :
+                    "bg-gray-100 text-gray-800"
+                  }`}>
+                    {getResultStatus().text}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Source Information */}
+            <div className="p-4 bg-amber-50 border-b">
+              <h2 className="text-sm font-bold text-amber-800 mb-2">SOURCE INFORMATION</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Radionuclide:</span>
+                  <div className="font-medium">Ir-192</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Source S/N:</span>
+                  <div className="font-medium">{sourceSerial || "-"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Certificate #:</span>
+                  <div className="font-medium">{certNumber || "-"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Cert Date:</span>
+                  <div className="font-medium">{certDate ? new Date(certDate).toLocaleDateString() : "-"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Certificate SRAK:</span>
+                  <div className="font-mono font-medium">{certSRAK || "-"} μGy·m²·h⁻¹</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Days Elapsed:</span>
+                  <div className="font-medium">{daysElapsed !== null ? daysElapsed.toFixed(0) : "-"}</div>
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-gray-500">Expected SRAK (decayed):</span>
+                  <div className="font-mono font-bold text-amber-700">{decayedCert !== null ? decayedCert.toFixed(1) : "-"} μGy·m²·h⁻¹</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Instrumentation */}
+            <div className="p-4 border-b">
+              <h2 className="text-sm font-bold text-gray-700 mb-2">INSTRUMENTATION</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Well Chamber:</span>
+                  <div className="font-medium">{chamberModel || "-"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Chamber S/N:</span>
+                  <div className="font-medium">{chamberSerial || "-"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">N<sub>sk</sub> Factor:</span>
+                  <div className="font-mono font-medium">{chamberNsk || "-"} μGy·m²·h⁻¹·nA⁻¹</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Electrometer:</span>
+                  <div className="font-medium">{electrometerModel || "-"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Electrometer S/N:</span>
+                  <div className="font-medium">{electrometerSerial || "-"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">k<sub>elec</sub>:</span>
+                  <div className="font-mono font-medium">{electrometerFactor || "1.000"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Applicator Type:</span>
+                  <div className="font-medium">{applicatorType || "-"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">k<sub>applicator</sub>:</span>
+                  <div className="font-mono font-medium">{applicatorFactor || "1.029"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Sweet Spot:</span>
+                  <div className="font-mono font-medium">{sweetSpotPosition || "-"} mm</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Measurement Conditions */}
+            <div className="p-4 border-b">
+              <h2 className="text-sm font-bold text-gray-700 mb-2">MEASUREMENT CONDITIONS</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Temperature:</span>
+                  <div className="font-mono font-medium">{measuredTemp || "-"} °C</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Pressure:</span>
+                  <div className="font-mono font-medium">{measuredPressure || "-"} kPa</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Ref Temp T₀:</span>
+                  <div className="font-mono font-medium">{refTemp || "20"} °C</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Ref Press P₀:</span>
+                  <div className="font-mono font-medium">{refPressure || "101.325"} kPa</div>
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-gray-500">k<sub>TP</sub>:</span>
+                  <div className="font-mono font-medium">{kTP !== null ? kTP.toFixed(6) : "-"}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Chamber Readings */}
+            <div className="p-4 border-b">
+              <h2 className="text-sm font-bold text-gray-700 mb-2">CHAMBER READINGS</h2>
+              <div className="grid grid-cols-4 gap-3 text-center">
+                <div className="p-2 bg-gray-50 rounded">
+                  <div className="text-xs text-gray-500">Reading 1</div>
+                  <div className="font-mono font-medium">{readings[0] || "-"} nA</div>
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <div className="text-xs text-gray-500">Reading 2</div>
+                  <div className="font-mono font-medium">{readings[1] || "-"} nA</div>
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <div className="text-xs text-gray-500">Reading 3</div>
+                  <div className="font-mono font-medium">{readings[2] || "-"} nA</div>
+                </div>
+                <div className="p-2 bg-blue-50 rounded">
+                  <div className="text-xs text-blue-600">Mean (M)</div>
+                  <div className="font-mono font-bold text-blue-700">{meanReading !== null ? meanReading.toFixed(3) : "-"} nA</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Results */}
+            <div className="p-4 bg-blue-50">
+              <h2 className="text-sm font-bold text-blue-800 mb-3">RESULTS</h2>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                  <div className="text-xs text-gray-500 mb-1">Expected S<sub>k</sub></div>
+                  <div className="font-mono text-xl font-bold text-amber-600">{decayedCert !== null ? decayedCert.toFixed(1) : "-"}</div>
+                  <div className="text-xs text-gray-400">μGy·m²·h⁻¹</div>
+                </div>
+                <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                  <div className="text-xs text-gray-500 mb-1">Measured S<sub>k</sub></div>
+                  <div className="font-mono text-xl font-bold text-blue-600">{measuredSRAK !== null ? measuredSRAK.toFixed(1) : "-"}</div>
+                  <div className="text-xs text-gray-400">μGy·m²·h⁻¹</div>
+                </div>
+                <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                  <div className="text-xs text-gray-500 mb-1">Deviation</div>
+                  <div className={`font-mono text-xl font-bold ${deviation !== null && Math.abs(deviation) > 3 ? "text-red-600" : "text-green-600"}`}>
+                    {deviation !== null ? `${deviation >= 0 ? "+" : ""}${deviation.toFixed(2)}%` : "-"}
+                  </div>
+                  <div className="text-xs text-gray-400">Tolerance: ±3%</div>
+                </div>
+              </div>
+
+              {/* Calculation Formula */}
+              <div className="p-3 bg-white rounded text-sm">
+                <div className="font-medium mb-1">Calculation:</div>
+                <div className="font-mono text-gray-600">
+                  S<sub>k</sub> = M × N<sub>sk</sub> × k<sub>TP</sub> × k<sub>elec</sub> × k<sub>app</sub>
+                </div>
+                <div className="font-mono text-gray-600 mt-1">
+                  S<sub>k</sub> = {meanReading?.toFixed(3) || "-"} × {chamberNsk || "-"} × {kTP?.toFixed(4) || "-"} × {electrometerFactor || "1.000"} × {applicatorFactor || "1.029"}
+                </div>
+                <div className="font-mono font-bold text-blue-700 mt-1">
+                  S<sub>k</sub> = {measuredSRAK !== null ? measuredSRAK.toFixed(1) : "-"} μGy·m²·h⁻¹
+                </div>
+              </div>
+            </div>
+
+            {/* Signatures */}
+            <div className="p-4 border-t">
+              <div className="grid grid-cols-2 gap-8">
+                <div>
+                  <div className="border-b border-gray-300 h-12"></div>
+                  <div className="text-xs text-gray-500 mt-1">Performed By / Date</div>
+                </div>
+                <div>
+                  <div className="border-b border-gray-300 h-12"></div>
+                  <div className="text-xs text-gray-500 mt-1">Reviewed By / Date</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Print Button */}
+            <div className="p-4 border-t bg-gray-50 flex justify-end gap-3 print:hidden">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Print
+              </button>
+              <button
+                onClick={() => setShowPrintReport(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print Styles */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print\\:relative,
+          .print\\:relative * {
+            visibility: visible;
+          }
+          .print\\:hidden {
+            display: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
