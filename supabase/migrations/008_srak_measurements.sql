@@ -28,8 +28,12 @@ CREATE TABLE IF NOT EXISTS srak_measurements (
   electrometer_factor DECIMAL(8, 6) DEFAULT 1.000000,
 
   -- Applicator correction factor
-  applicator_factor DECIMAL(8, 6) DEFAULT 1.029000,
+  applicator_factor DECIMAL(8, 6) DEFAULT 1.000000,
   applicator_type VARCHAR(100),
+
+  -- Source correction factor (e.g., Gammamed = 0.9961)
+  source_factor DECIMAL(8, 6) DEFAULT 1.000000,
+  source_model VARCHAR(100),
 
   -- Sweet Spot
   sweet_spot_position DECIMAL(8, 3), -- mm

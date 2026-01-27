@@ -28,6 +28,8 @@ interface SRAKMeasurement {
   electrometer_factor: number;
   applicator_factor?: number;
   applicator_type?: string;
+  source_factor?: number;
+  source_model?: string;
   sweet_spot_position?: number;
   sweet_spot_method?: string;
   measured_temperature?: number;
@@ -349,7 +351,15 @@ export default function SRAKReportsPage() {
                 </div>
                 <div>
                   <span className="text-gray-500">k_app:</span>
-                  <span className="ml-2 font-mono font-medium">{selectedMeasurement.applicator_factor?.toFixed(4) || "1.0290"}</span>
+                  <span className="ml-2 font-mono font-medium">{selectedMeasurement.applicator_factor?.toFixed(4) || "1.0000"}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Source Model:</span>
+                  <span className="ml-2 font-medium">{selectedMeasurement.source_model || "-"}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">k_source:</span>
+                  <span className="ml-2 font-mono font-medium">{selectedMeasurement.source_factor?.toFixed(4) || "1.0000"}</span>
                 </div>
               </div>
             </div>
@@ -437,7 +447,7 @@ export default function SRAKReportsPage() {
 
               {/* Formula Display */}
               <div className="mt-4 p-3 bg-white rounded text-sm text-gray-600">
-                <strong>Calculation:</strong> S<sub>k</sub> = M × N<sub>sk</sub> × k<sub>TP</sub> × k<sub>elec</sub> × k<sub>app</sub> = {selectedMeasurement.mean_reading?.toFixed(2)} × {selectedMeasurement.chamber_factor_nsk} × {selectedMeasurement.k_tp?.toFixed(4)} × {selectedMeasurement.electrometer_factor.toFixed(4)} × {selectedMeasurement.applicator_factor?.toFixed(4) || "1.0290"} = <strong>{selectedMeasurement.measured_srak?.toFixed(1)} μGy·m²·h⁻¹</strong>
+                <strong>Calculation:</strong> S<sub>k</sub> = M × N<sub>sk</sub> × k<sub>TP</sub> × k<sub>elec</sub> × k<sub>app</sub> × k<sub>source</sub> = {selectedMeasurement.mean_reading?.toFixed(2)} × {selectedMeasurement.chamber_factor_nsk} × {selectedMeasurement.k_tp?.toFixed(4)} × {selectedMeasurement.electrometer_factor.toFixed(4)} × {selectedMeasurement.applicator_factor?.toFixed(4) || "1.0000"} × {selectedMeasurement.source_factor?.toFixed(4) || "1.0000"} = <strong>{selectedMeasurement.measured_srak?.toFixed(1)} μGy·m²·h⁻¹</strong>
               </div>
             </div>
 

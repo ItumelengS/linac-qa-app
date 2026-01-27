@@ -721,6 +721,8 @@ export interface SRAKReportData {
   electrometer_factor: number;
   applicator_factor: number;
   applicator_type?: string;
+  source_factor: number;
+  source_model?: string;
   sweet_spot_position?: number;
   sweet_spot_method?: string;
   measured_temperature?: number;
@@ -740,6 +742,9 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
     electrometer_factor?: number;
     applicator_factor?: number;
     applicator_type?: string;
+    source_factor?: number;
+    source_model?: string;
+    source_radionuclide?: string;
     reference_temperature?: number;
     reference_pressure?: number;
     certificate_srak?: number;
@@ -855,6 +860,9 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   const [electrometerModel, setElectrometerModel] = useState<string>(initVals?.electrometer_model || "");
   const [electrometerSerial, setElectrometerSerial] = useState<string>(initVals?.electrometer_serial || "");
   const [applicatorType, setApplicatorType] = useState<string>(initVals?.applicator_type || "");
+  const [sourceFactor, setSourceFactor] = useState<string>(initVals?.source_factor?.toString() || "1.000");
+  const [sourceModel, setSourceModel] = useState<string>(initVals?.source_model || "");
+  const [sourceRadionuclide, setSourceRadionuclide] = useState<string>(initVals?.source_radionuclide || "Ir-192");
 
   // Save report state
   const [savingReport, setSavingReport] = useState(false);
@@ -875,7 +883,8 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   const calculate = useCallback(() => {
     const nsk = parseFloat(chamberNsk);
     const kelec = parseFloat(electrometerFactor);
-    const kApp = parseFloat(applicatorFactor) || 1.029; // Default applicator factor
+    const kApp = parseFloat(applicatorFactor) || 1.0; // Applicator correction factor
+    const kSource = parseFloat(sourceFactor) || 1.0; // Source correction factor (e.g., Gammamed = 0.9961)
     const T0 = parseFloat(refTemp);
     const P0 = parseFloat(refPressure);
     const certValue = parseFloat(certSRAK);
@@ -898,9 +907,9 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
       kTP = ((273.15 + T) / (273.15 + T0)) * (P0 / P);
     }
 
-    // Calculate measured SRAK: Sk = M × Nsk × kTP × kelec × k_applicator
+    // Calculate measured SRAK: Sk = M × Nsk × kTP × kelec × k_applicator × k_source
     const kElec = isNaN(kelec) ? 1.0 : kelec;
-    const measuredSRAK = meanReading * nsk * kTP * kElec * kApp;
+    const measuredSRAK = meanReading * nsk * kTP * kElec * kApp * kSource;
 
     // If no certificate data, just show measured value
     if (isNaN(certValue) || !certDate) {
@@ -908,8 +917,8 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
       onUpdate({
         measurement: measuredSRAK,
         status: "",
-        notes: `Measured SRAK: ${measuredSRAK.toFixed(1)} μGy·m²·h⁻¹ (Mean M: ${meanReading.toFixed(2)} nA, kTP: ${kTP.toFixed(4)}, k_app: ${kApp.toFixed(3)})${sweetSpotInfo}`,
-        calculatorData: { readings: readingValues, meanReading, nsk, kTP, kElec, kApp, measuredSRAK, sweetSpotPosition: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined },
+        notes: `Measured SRAK: ${measuredSRAK.toFixed(1)} μGy·m²·h⁻¹ (Mean M: ${meanReading.toFixed(2)} nA, kTP: ${kTP.toFixed(4)}, k_app: ${kApp.toFixed(3)}, k_src: ${kSource.toFixed(4)})${sweetSpotInfo}`,
+        calculatorData: { readings: readingValues, meanReading, nsk, kTP, kElec, kApp, kSource, measuredSRAK, sweetSpotPosition: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined },
       });
       return;
     }
@@ -941,6 +950,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
         kTP,
         kElec,
         kApp,
+        kSource,
         measuredSRAK,
         decayedCert,
         daysElapsed,
@@ -949,7 +959,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
         sweetSpotPosition: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined,
       },
     });
-  }, [readings, chamberNsk, electrometerFactor, applicatorFactor, refTemp, refPressure, certSRAK, certDate, measuredTemp, measuredPressure, sweetSpotPosition, tolerance, actionLevel, onUpdate]);
+  }, [readings, chamberNsk, electrometerFactor, applicatorFactor, sourceFactor, refTemp, refPressure, certSRAK, certDate, measuredTemp, measuredPressure, sweetSpotPosition, tolerance, actionLevel, onUpdate]);
 
   useEffect(() => {
     calculate();
@@ -960,7 +970,8 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   const meanReading = readingValues.length > 0 ? readingValues.reduce((a, b) => a + b, 0) / readingValues.length : null;
 
   const nsk = parseFloat(chamberNsk);
-  const kApp = parseFloat(applicatorFactor) || 1.029;
+  const kApp = parseFloat(applicatorFactor) || 1.0;
+  const kSrc = parseFloat(sourceFactor) || 1.0;
   const T = parseFloat(measuredTemp);
   const P = parseFloat(measuredPressure);
   const T0 = parseFloat(refTemp);
@@ -973,7 +984,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
   }
 
   const measuredSRAK = meanReading !== null && !isNaN(nsk) && kTP !== null
-    ? meanReading * nsk * kTP * kelec * kApp
+    ? meanReading * nsk * kTP * kelec * kApp * kSrc
     : null;
 
   const certValue = parseFloat(certSRAK);
@@ -993,8 +1004,11 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
       onSaveBaseline({
         chamber_factor_nsk: parseFloat(chamberNsk),
         electrometer_factor: parseFloat(electrometerFactor) || 1.0,
-        applicator_factor: parseFloat(applicatorFactor) || 1.029,
+        applicator_factor: parseFloat(applicatorFactor) || 1.0,
         applicator_type: applicatorType || undefined,
+        source_factor: parseFloat(sourceFactor) || 1.0,
+        source_model: sourceModel || undefined,
+        source_radionuclide: sourceRadionuclide || "Ir-192",
         reference_temperature: parseFloat(refTemp) || 20,
         reference_pressure: parseFloat(refPressure) || 101.325,
         certificate_srak: parseFloat(certSRAK),
@@ -1020,7 +1034,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
       const reportData: SRAKReportData = {
         equipment_id: equipmentId,
         source_serial: sourceSerial || undefined,
-        source_radionuclide: "Ir-192",
+        source_radionuclide: sourceRadionuclide || "Ir-192",
         certificate_srak: parseFloat(certSRAK),
         certificate_date: certDate,
         certificate_number: certNumber || undefined,
@@ -1030,8 +1044,10 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
         electrometer_model: electrometerModel || undefined,
         electrometer_serial: electrometerSerial || undefined,
         electrometer_factor: parseFloat(electrometerFactor) || 1.0,
-        applicator_factor: parseFloat(applicatorFactor) || 1.029,
+        applicator_factor: parseFloat(applicatorFactor) || 1.0,
         applicator_type: applicatorType || undefined,
+        source_factor: parseFloat(sourceFactor) || 1.0,
+        source_model: sourceModel || undefined,
         sweet_spot_position: sweetSpotPosition ? parseFloat(sweetSpotPosition) : undefined,
         sweet_spot_method: sweetSpotPhase === "complete" ? "coarse_fine_scan" : sweetSpotPosition ? "manual" : undefined,
         measured_temperature: parseFloat(measuredTemp) || undefined,
@@ -1322,6 +1338,41 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
       {/* Source Information */}
       <div className="mb-3 p-2 bg-amber-50 rounded border border-amber-200">
         <div className="text-xs font-medium text-amber-700 mb-2">Source Information</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+          <div>
+            <label className="text-xs text-gray-500">Radionuclide</label>
+            <select
+              value={sourceRadionuclide}
+              onChange={(e) => setSourceRadionuclide(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
+            >
+              <option value="Ir-192">Ir-192</option>
+              <option value="Co-60">Co-60</option>
+              <option value="Cs-137">Cs-137</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Source Model/Type</label>
+            <input
+              type="text"
+              placeholder="e.g., Gammamed, microSelectron"
+              value={sourceModel}
+              onChange={(e) => setSourceModel(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">k_source (correction)</label>
+            <input
+              type="number"
+              step="0.0001"
+              placeholder="1.0000"
+              value={sourceFactor}
+              onChange={(e) => setSourceFactor(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
+            />
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
             <label className="text-xs text-gray-500">Source Serial Number</label>
@@ -1344,6 +1395,9 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
             />
           </div>
         </div>
+        <p className="text-xs text-amber-600 mt-2">
+          Common k_source values: Gammamed = 0.9961, microSelectron = 1.0000
+        </p>
       </div>
 
       {/* Chamber & Certificate Data (Baseline) */}
@@ -1529,10 +1583,11 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
 
       {/* Results */}
       <div className="p-2 sm:p-3 bg-blue-50 rounded border border-blue-100">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs sm:text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-xs sm:text-sm">
           <div>Mean M: <span className="font-mono">{meanReading !== null ? `${meanReading.toFixed(2)} nA` : "--"}</span></div>
           <div>k_TP: <span className="font-mono">{kTP !== null ? kTP.toFixed(4) : "--"}</span></div>
-          <div>k_app: <span className="font-mono">{kApp.toFixed(3)}</span></div>
+          <div>k_app: <span className="font-mono">{kApp.toFixed(4)}</span></div>
+          <div>k_src: <span className="font-mono">{kSrc.toFixed(4)}</span></div>
           <div>Measured S_k: <span className="font-mono font-semibold text-blue-600">{measuredSRAK !== null ? `${measuredSRAK.toFixed(1)}` : "--"}</span></div>
           <div>Expected S_k: <span className="font-mono text-amber-600">{decayedCert !== null ? `${decayedCert.toFixed(1)}` : "--"}</span></div>
           <div className="col-span-2 sm:col-span-3 pt-1 border-t border-blue-200 mt-1">
@@ -1648,11 +1703,19 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                 <div>
                   <span className="text-gray-500">Radionuclide:</span>
-                  <div className="font-medium">Ir-192</div>
+                  <div className="font-medium">{sourceRadionuclide || "Ir-192"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Source Model:</span>
+                  <div className="font-medium">{sourceModel || "-"}</div>
                 </div>
                 <div>
                   <span className="text-gray-500">Source S/N:</span>
                   <div className="font-medium">{sourceSerial || "-"}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">k<sub>source</sub>:</span>
+                  <div className="font-mono font-medium">{sourceFactor || "1.0000"}</div>
                 </div>
                 <div>
                   <span className="text-gray-500">Certificate #:</span>
@@ -1670,7 +1733,7 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
                   <span className="text-gray-500">Days Elapsed:</span>
                   <div className="font-medium">{daysElapsed !== null ? daysElapsed.toFixed(0) : "-"}</div>
                 </div>
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-4">
                   <span className="text-gray-500">Expected SRAK (decayed):</span>
                   <div className="font-mono font-bold text-amber-700">{decayedCert !== null ? decayedCert.toFixed(1) : "-"} μGy·m²·h⁻¹</div>
                 </div>
@@ -1797,10 +1860,10 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
               <div className="p-3 bg-white rounded text-sm">
                 <div className="font-medium mb-1">Calculation:</div>
                 <div className="font-mono text-gray-600">
-                  S<sub>k</sub> = M × N<sub>sk</sub> × k<sub>TP</sub> × k<sub>elec</sub> × k<sub>app</sub>
+                  S<sub>k</sub> = M × N<sub>sk</sub> × k<sub>TP</sub> × k<sub>elec</sub> × k<sub>app</sub> × k<sub>source</sub>
                 </div>
                 <div className="font-mono text-gray-600 mt-1">
-                  S<sub>k</sub> = {meanReading?.toFixed(3) || "-"} × {chamberNsk || "-"} × {kTP?.toFixed(4) || "-"} × {electrometerFactor || "1.000"} × {applicatorFactor || "1.029"}
+                  S<sub>k</sub> = {meanReading?.toFixed(3) || "-"} × {chamberNsk || "-"} × {kTP?.toFixed(4) || "-"} × {electrometerFactor || "1.0000"} × {applicatorFactor || "1.0000"} × {sourceFactor || "1.0000"}
                 </div>
                 <div className="font-mono font-bold text-blue-700 mt-1">
                   S<sub>k</sub> = {measuredSRAK !== null ? measuredSRAK.toFixed(1) : "-"} μGy·m²·h⁻¹

@@ -98,8 +98,10 @@ export async function POST(request: NextRequest) {
       electrometer_model,
       electrometer_serial,
       electrometer_factor = 1.0,
-      applicator_factor = 1.029,
+      applicator_factor = 1.0,
       applicator_type,
+      source_factor = 1.0,
+      source_model,
       sweet_spot_position,
       sweet_spot_method,
       measured_temperature,
@@ -139,7 +141,7 @@ export async function POST(request: NextRequest) {
     let result = null;
 
     if (mean_reading && chamber_factor_nsk) {
-      measured_srak = mean_reading * chamber_factor_nsk * k_tp * electrometer_factor * applicator_factor;
+      measured_srak = mean_reading * chamber_factor_nsk * k_tp * electrometer_factor * applicator_factor * source_factor;
       deviation_percent = ((measured_srak - decayed_srak) / decayed_srak) * 100;
 
       // Determine result based on deviation
@@ -175,6 +177,8 @@ export async function POST(request: NextRequest) {
         electrometer_factor,
         applicator_factor,
         applicator_type,
+        source_factor,
+        source_model,
         sweet_spot_position,
         sweet_spot_method,
         measured_temperature,
