@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
         id: profile.id,
         full_name: profile.full_name,
         organization_id: profile.organization_id,
+        organization_name: profile.organizations?.name || "",
       },
       equipment,
       tests: tests || [],

@@ -394,6 +394,7 @@ function QAFormContent() {
   const [baselines, setBaselines] = useState<Record<string, { values: BaselineValues; notes?: string }>>({});
   const [comments, setComments] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState<string>("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -410,6 +411,7 @@ function QAFormContent() {
 
       setEquipment(data.equipment);
       setTests(data.tests || []);
+      setOrganizationName(data.profile?.organization_name || "");
 
       // Initialize results
       const initialResults: Record<string, TestResult> = {};
@@ -1723,6 +1725,8 @@ function QAFormContent() {
                               onUpdate={(calcResult) => handleCalculatorUpdate(test.test_id, calcResult)}
                               onSaveBaseline={(values) => handleSaveBaseline(test.test_id, values)}
                               equipmentId={equipment?.id}
+                              equipmentName={equipment?.name}
+                              organizationName={organizationName}
                               onSaveSRAKReport={test.calculator_type === "srak_calculation" ? handleSaveSRAKReport : undefined}
                             />
                             {/* Status display, override buttons, and Set as Baseline */}

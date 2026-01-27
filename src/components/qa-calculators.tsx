@@ -701,6 +701,8 @@ export function SourceDecayCheckCalculator({ testId, tolerance, actionLevel, ini
 // ============================================================================
 interface SRAKCalculatorProps extends CalculatorProps {
   equipmentId?: string;
+  equipmentName?: string;
+  organizationName?: string;
   onSaveSRAKReport?: (data: SRAKReportData) => Promise<void>;
 }
 
@@ -732,7 +734,7 @@ export interface SRAKReportData {
   notes?: string;
 }
 
-export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline, equipmentId, onSaveSRAKReport }: SRAKCalculatorProps) {
+export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline, equipmentId, equipmentName, organizationName, onSaveSRAKReport }: SRAKCalculatorProps) {
   const initVals = initialValues as {
     chamber_factor_nsk?: number;
     electrometer_factor?: number;
@@ -1598,8 +1600,14 @@ export function SRAKCalculator({ testId, tolerance, actionLevel, initialValues, 
             <div className="p-6 border-b-2 border-black print:p-4">
               <div className="flex justify-between items-start">
                 <div>
+                  {organizationName && (
+                    <div className="text-lg font-bold text-gray-800 mb-1">{organizationName}</div>
+                  )}
                   <h1 className="text-2xl font-bold text-gray-900">SRAK Measurement Report</h1>
                   <p className="text-gray-600">Source Reference Air Kerma Rate Verification</p>
+                  {equipmentName && (
+                    <p className="text-gray-700 font-medium mt-1">Equipment: {equipmentName}</p>
+                  )}
                 </div>
                 <div className="text-right print:hidden">
                   <button
@@ -2056,10 +2064,12 @@ interface InlineCalculatorProps {
   onSaveBaseline?: (values: BaselineValues) => void;
   // SRAK-specific props
   equipmentId?: string;
+  equipmentName?: string;
+  organizationName?: string;
   onSaveSRAKReport?: (data: SRAKReportData) => Promise<void>;
 }
 
-export function InlineCalculator({ calculatorType, testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline, equipmentId, onSaveSRAKReport }: InlineCalculatorProps) {
+export function InlineCalculator({ calculatorType, testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline, equipmentId, equipmentName, organizationName, onSaveSRAKReport }: InlineCalculatorProps) {
   const props = { testId, tolerance, actionLevel, initialValues, onUpdate, onSaveBaseline };
 
   switch (calculatorType) {
@@ -2076,7 +2086,7 @@ export function InlineCalculator({ calculatorType, testId, tolerance, actionLeve
     case "source_decay_check":
       return <SourceDecayCheckCalculator {...props} />;
     case "srak_calculation":
-      return <SRAKCalculator {...props} equipmentId={equipmentId} onSaveSRAKReport={onSaveSRAKReport} />;
+      return <SRAKCalculator {...props} equipmentId={equipmentId} equipmentName={equipmentName} organizationName={organizationName} onSaveSRAKReport={onSaveSRAKReport} />;
     default:
       return null;
   }
